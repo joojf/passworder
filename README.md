@@ -9,10 +9,10 @@ The current release only ships the project scaffold. Command parsing is wired up
 ## Getting Started
 
 ```bash
-cargo run -- generate
+cargo run -- password
 ```
 
-The `generate` subcommand is a placeholder for now and simply confirms that the CLI plumbing works.
+The command returns a 20-character password drawn from upper, lower, digit, and symbol classes, omitting ambiguous characters like `0`, `O`, `l`, and `1` by default.
 
 ## Development
 
