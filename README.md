@@ -14,6 +14,21 @@ cargo run -- password
 
 The command returns a 20-character password drawn from upper, lower, digit, and symbol classes, omitting ambiguous characters like `0`, `O`, `l`, and `1` by default.
 
+### Options
+
+- `--length <N>`: adjust password length (default: `20`).
+- `--lowercase=<bool>` / `--no-lowercase`: toggle lowercase letters.
+- `--uppercase=<bool>` / `--no-uppercase`: toggle uppercase letters.
+- `--digits=<bool>` / `--no-digits`: toggle digits.
+- `--symbols=<bool>` / `--no-symbols`: toggle symbol characters.
+- `--allow-ambiguous`: allow characters such as `0`, `O`, `l`, `1`, and `|`.
+
+Example enforcing uppercase-only passwords with custom length:
+
+```bash
+cargo run -- password --length 32 --lowercase=false --no-digits --no-symbols
+```
+
 ## Development
 
 - Rust 1.76+ (2024 edition)

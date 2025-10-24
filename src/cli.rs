@@ -29,4 +29,86 @@ pub struct PasswordArgs {
         action = clap::ArgAction::SetTrue
     )]
     pub allow_ambiguous: bool,
+
+    #[arg(
+        long,
+        value_name = "BOOL",
+        help = "Include lowercase letters (a-z).",
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub lowercase: Option<bool>,
+    #[arg(
+        long = "no-lowercase",
+        action = clap::ArgAction::SetTrue,
+        help = "Disable lowercase letters."
+    )]
+    pub no_lowercase: bool,
+
+    #[arg(
+        long,
+        value_name = "BOOL",
+        help = "Include uppercase letters (A-Z).",
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub uppercase: Option<bool>,
+    #[arg(
+        long = "no-uppercase",
+        action = clap::ArgAction::SetTrue,
+        help = "Disable uppercase letters."
+    )]
+    pub no_uppercase: bool,
+
+    #[arg(
+        long,
+        value_name = "BOOL",
+        help = "Include digits (0-9).",
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub digits: Option<bool>,
+    #[arg(
+        long = "no-digits",
+        action = clap::ArgAction::SetTrue,
+        help = "Disable digits."
+    )]
+    pub no_digits: bool,
+
+    #[arg(
+        long,
+        value_name = "BOOL",
+        help = "Include symbol characters.",
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub symbols: Option<bool>,
+    #[arg(
+        long = "no-symbols",
+        action = clap::ArgAction::SetTrue,
+        help = "Disable symbol characters."
+    )]
+    pub no_symbols: bool,
+}
+
+impl PasswordArgs {
+    pub fn include_lowercase(&self) -> bool {
+        resolve_toggle(self.lowercase, self.no_lowercase)
+    }
+
+    pub fn include_uppercase(&self) -> bool {
+        resolve_toggle(self.uppercase, self.no_uppercase)
+    }
+
+    pub fn include_digits(&self) -> bool {
+        resolve_toggle(self.digits, self.no_digits)
+    }
+
+    pub fn include_symbols(&self) -> bool {
+        resolve_toggle(self.symbols, self.no_symbols)
+    }
+}
+
+fn resolve_toggle(choice: Option<bool>, negated: bool) -> bool {
+    choice.unwrap_or(!negated)
 }

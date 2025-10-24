@@ -12,6 +12,10 @@ fn main() -> ExitCode {
             let config = password::PasswordConfig {
                 length: args.length,
                 allow_ambiguous: args.allow_ambiguous,
+                include_lowercase: args.include_lowercase(),
+                include_uppercase: args.include_uppercase(),
+                include_digits: args.include_digits(),
+                include_symbols: args.include_symbols(),
             };
 
             match password::generate(config) {
