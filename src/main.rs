@@ -1,6 +1,7 @@
 mod cli;
 mod passphrase;
 mod password;
+mod token;
 
 use clap::{CommandFactory, Parser};
 use std::process::ExitCode;
@@ -49,6 +50,16 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Some(cli::Commands::Token(token_args)) => match token::handle(token_args.command) {
+            Ok(output) => {
+                println!("{output}");
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("Error: {error}");
+                ExitCode::FAILURE
+            }
+        },
         None => {
             let mut cmd = cli::Cli::command();
             cmd.print_help().expect("help to be printed");

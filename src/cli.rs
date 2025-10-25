@@ -19,6 +19,8 @@ pub enum Commands {
     Password(PasswordArgs),
     #[command(about = "Generate a passphrase from a word list.")]
     Passphrase(PassphraseArgs),
+    #[command(subcommand_required = true, about = "Generate random tokens.")]
+    Token(TokenArgs),
 }
 
 #[derive(Debug, Args)]
@@ -143,4 +145,31 @@ pub struct PassphraseArgs {
         help = "Path to a custom word list (one word per line)."
     )]
     pub wordlist: Option<PathBuf>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TokenCommands {
+    #[command(about = "Generate a hexadecimal token.")]
+    Hex(TokenBytesArgs),
+    #[command(about = "Generate a base64 (unpadded) token.")]
+    B64(TokenBytesArgs),
+    #[command(about = "Generate an RFC 4122 UUID v4.")]
+    Uuid,
+}
+
+#[derive(Debug, Args)]
+pub struct TokenBytesArgs {
+    #[arg(
+        short,
+        long,
+        default_value_t = 16usize,
+        help = "Number of random bytes to generate."
+    )]
+    pub bytes: usize,
+}
+
+#[derive(Debug, Args)]
+pub struct TokenArgs {
+    #[command(subcommand)]
+    pub command: TokenCommands,
 }

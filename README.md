@@ -48,6 +48,18 @@ Example using a custom Diceware file and spaces:
 cargo run -- passphrase --wordlist ~/diceware.txt --separator " " --words 8 --title
 ```
 
+### Tokens
+
+```bash
+cargo run -- token hex --bytes 16
+```
+
+The `token` subcommand provides quick random identifiers:
+
+- `hex` (default 16 bytes → 32 hex chars) with `--bytes <N>` for length.
+- `b64` (URL-safe base64 without padding) with `--bytes <N>`.
+- `uuid` generates an RFC 4122 version 4 UUID.
+
 ## Development
 
 - Rust 1.76+ (2024 edition)
