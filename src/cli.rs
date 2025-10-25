@@ -21,6 +21,8 @@ pub enum Commands {
     Passphrase(PassphraseArgs),
     #[command(subcommand_required = true, about = "Generate random tokens.")]
     Token(TokenArgs),
+    #[command(about = "Estimate entropy for a given input string.")]
+    Entropy(EntropyArgs),
 }
 
 #[derive(Debug, Args)]
@@ -172,4 +174,14 @@ pub struct TokenBytesArgs {
 pub struct TokenArgs {
     #[command(subcommand)]
     pub command: TokenCommands,
+}
+
+#[derive(Debug, Args)]
+pub struct EntropyArgs {
+    #[arg(
+        long,
+        value_name = "STRING",
+        help = "Input string to analyze; falls back to STDIN when omitted."
+    )]
+    pub input: Option<String>,
 }

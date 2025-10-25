@@ -60,6 +60,18 @@ The `token` subcommand provides quick random identifiers:
 - `b64` (URL-safe base64 without padding) with `--bytes <N>`.
 - `uuid` generates an RFC 4122 version 4 UUID.
 
+### Entropy
+
+```bash
+echo -n "Tr0ub4dor&3" | cargo run -- entropy
+```
+
+Outputs a JSON report with the input length and a Shannon entropy estimate in bits. You can also pass data directly without STDIN:
+
+```bash
+cargo run -- entropy --input "correcthorsebatterystaple"
+```
+
 ## Development
 
 - Rust 1.76+ (2024 edition)

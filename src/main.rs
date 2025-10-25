@@ -1,4 +1,5 @@
 mod cli;
+mod entropy;
 mod passphrase;
 mod password;
 mod token;
@@ -60,6 +61,19 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some(cli::Commands::Entropy(args)) => {
+            let config = entropy::EntropyConfig { input: args.input };
+            match entropy::analyze(config) {
+                Ok(report) => {
+                    println!("{report}");
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         None => {
             let mut cmd = cli::Cli::command();
             cmd.print_help().expect("help to be printed");
