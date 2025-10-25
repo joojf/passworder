@@ -29,6 +29,25 @@ Example enforcing uppercase-only passwords with custom length:
 cargo run -- password --length 32 --lowercase=false --no-digits --no-symbols
 ```
 
+### Passphrases
+
+```bash
+cargo run -- passphrase
+```
+
+Generates a six-word passphrase separated by hyphens using a small built-in word list. Flags:
+
+- `--words <N>`: number of words (default: `6`).
+- `--separator <SEP>`: custom separator string (default: `-`).
+- `--title`: title-case each word.
+- `--wordlist <FILE>`: provide a custom word list file (one word per line). Recommended for production use (e.g., a Diceware list).
+
+Example using a custom Diceware file and spaces:
+
+```bash
+cargo run -- passphrase --wordlist ~/diceware.txt --separator " " --words 8 --title
+```
+
 ## Development
 
 - Rust 1.76+ (2024 edition)

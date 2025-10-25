@@ -1,4 +1,5 @@
 use clap::{Args, Parser, Subcommand};
+use std::path::PathBuf;
 #[derive(Debug, Parser)]
 #[command(
     name = "passworder",
@@ -16,6 +17,8 @@ pub struct Cli {
 pub enum Commands {
     #[command(about = "Generate a password with sensible defaults.")]
     Password(PasswordArgs),
+    #[command(about = "Generate a passphrase from a word list.")]
+    Passphrase(PassphraseArgs),
 }
 
 #[derive(Debug, Args)]
@@ -111,4 +114,33 @@ impl PasswordArgs {
 
 fn resolve_toggle(choice: Option<bool>, negated: bool) -> bool {
     choice.unwrap_or(!negated)
+}
+
+#[derive(Debug, Args)]
+pub struct PassphraseArgs {
+    #[arg(
+        short,
+        long,
+        default_value_t = 6usize,
+        help = "Number of words in the passphrase."
+    )]
+    pub words: usize,
+
+    #[arg(
+        short,
+        long,
+        default_value = "-",
+        help = "Separator placed between words."
+    )]
+    pub separator: String,
+
+    #[arg(long, help = "Title-case each word in the passphrase.")]
+    pub title: bool,
+
+    #[arg(
+        long,
+        value_name = "FILE",
+        help = "Path to a custom word list (one word per line)."
+    )]
+    pub wordlist: Option<PathBuf>,
 }

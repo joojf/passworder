@@ -1,4 +1,5 @@
 mod cli;
+mod passphrase;
 mod password;
 
 use clap::{CommandFactory, Parser};
@@ -21,6 +22,25 @@ fn main() -> ExitCode {
             match password::generate(config) {
                 Ok(password) => {
                     println!("{password}");
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Some(cli::Commands::Passphrase(args)) => {
+            let config = passphrase::PassphraseConfig {
+                word_count: args.words,
+                separator: args.separator.clone(),
+                title_case: args.title,
+                wordlist: args.wordlist.clone(),
+            };
+
+            match passphrase::generate(config) {
+                Ok(phrase) => {
+                    println!("{phrase}");
                     ExitCode::SUCCESS
                 }
                 Err(error) => {
