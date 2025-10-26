@@ -69,3 +69,81 @@ fn entropy_input_success() {
         .success()
         .stdout(predicate::str::contains("\"length\":3"));
 }
+
+fn temp_config_path() -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("config.toml");
+    (dir, path)
+}
+
+#[test]
+fn profile_save_and_list() {
+    let (_dir, path) = temp_config_path();
+
+    Command::cargo_bin("passworder")
+        .expect("binary exists")
+        .env("PASSWORDER_CONFIG", &path)
+        .args(["profile", "save", "team", "--length", "24", "--no-digits"])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("passworder")
+        .expect("binary exists")
+        .env("PASSWORDER_CONFIG", &path)
+        .args(["profile", "list"])
+        .output()
+        .expect("profile list output");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("team"));
+    assert!(stdout.contains("length=24"));
+    assert!(stdout.contains("digits=false"));
+}
+
+#[test]
+fn password_uses_profile_settings() {
+    let (_dir, path) = temp_config_path();
+
+    Command::cargo_bin("passworder")
+        .expect("binary exists")
+        .env("PASSWORDER_CONFIG", &path)
+        .args([
+            "profile",
+            "save",
+            "uppercase",
+            "--length",
+            "6",
+            "--no-digits",
+            "--no-symbols",
+            "--lowercase",
+            "false",
+        ])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("passworder")
+        .expect("binary exists")
+        .env("PASSWORDER_CONFIG", &path)
+        .args(["password", "--profile", "uppercase"])
+        .output()
+        .expect("password output");
+
+    assert!(output.status.success());
+    let password = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    assert_eq!(password.len(), 6);
+    assert!(password.chars().all(|c| c.is_ascii_uppercase()));
+}
+
+#[test]
+fn profile_remove_unknown_fails() {
+    let (_dir, path) = temp_config_path();
+
+    Command::cargo_bin("passworder")
+        .expect("binary exists")
+        .env("PASSWORDER_CONFIG", &path)
+        .args(["profile", "rm", "missing"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("does not exist"));
+}

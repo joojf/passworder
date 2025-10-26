@@ -23,19 +23,46 @@ pub enum Commands {
     Token(TokenArgs),
     #[command(about = "Estimate entropy for a given input string.")]
     Entropy(EntropyArgs),
+    #[command(
+        subcommand_required = true,
+        about = "Manage reusable password profiles."
+    )]
+    Profile(ProfileArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct PasswordArgs {
-    #[arg(short, long, default_value_t = 20usize, help = "Password length.")]
-    pub length: usize,
+    #[arg(long, help = "Use a saved profile for password generation.")]
+    pub profile: Option<String>,
+    #[command(flatten)]
+    pub options: PasswordOptionsArgs,
+}
+
+#[derive(Debug, Args, Clone, Default)]
+pub struct PasswordOptionsArgs {
+    #[arg(
+        short,
+        long,
+        value_name = "N",
+        help = "Password length.",
+        value_parser = clap::value_parser!(usize)
+    )]
+    pub length: Option<usize>,
 
     #[arg(
-        long,
-        help = "Allow ambiguous characters such as 0, O, l, 1, and |.",
-        action = clap::ArgAction::SetTrue
+        long = "allow-ambiguous",
+        value_name = "BOOL",
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new(),
+        help = "Allow ambiguous characters such as 0, O, l, 1, and |."
     )]
-    pub allow_ambiguous: bool,
+    pub allow_ambiguous: Option<bool>,
+    #[arg(
+        long = "no-allow-ambiguous",
+        action = clap::ArgAction::SetTrue,
+        help = "Disallow ambiguous characters."
+    )]
+    pub no_allow_ambiguous: bool,
 
     #[arg(
         long,
@@ -98,26 +125,38 @@ pub struct PasswordArgs {
     pub no_symbols: bool,
 }
 
-impl PasswordArgs {
-    pub fn include_lowercase(&self) -> bool {
-        resolve_toggle(self.lowercase, self.no_lowercase)
-    }
+impl PasswordOptionsArgs {
+    pub fn apply_to_config(&self, config: &mut crate::password::PasswordConfig) {
+        if let Some(length) = self.length {
+            config.length = length;
+        }
 
-    pub fn include_uppercase(&self) -> bool {
-        resolve_toggle(self.uppercase, self.no_uppercase)
-    }
-
-    pub fn include_digits(&self) -> bool {
-        resolve_toggle(self.digits, self.no_digits)
-    }
-
-    pub fn include_symbols(&self) -> bool {
-        resolve_toggle(self.symbols, self.no_symbols)
+        apply_bool_option(
+            self.allow_ambiguous,
+            self.no_allow_ambiguous,
+            &mut config.allow_ambiguous,
+        );
+        apply_bool_option(
+            self.lowercase,
+            self.no_lowercase,
+            &mut config.include_lowercase,
+        );
+        apply_bool_option(
+            self.uppercase,
+            self.no_uppercase,
+            &mut config.include_uppercase,
+        );
+        apply_bool_option(self.digits, self.no_digits, &mut config.include_digits);
+        apply_bool_option(self.symbols, self.no_symbols, &mut config.include_symbols);
     }
 }
 
-fn resolve_toggle(choice: Option<bool>, negated: bool) -> bool {
-    choice.unwrap_or(!negated)
+fn apply_bool_option(choice: Option<bool>, negated: bool, value: &mut bool) {
+    if let Some(explicit) = choice {
+        *value = explicit;
+    } else if negated {
+        *value = false;
+    }
 }
 
 #[derive(Debug, Args)]
@@ -147,6 +186,36 @@ pub struct PassphraseArgs {
         help = "Path to a custom word list (one word per line)."
     )]
     pub wordlist: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct ProfileArgs {
+    #[command(subcommand)]
+    pub command: ProfileCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ProfileCommands {
+    #[command(about = "Create or update a profile with the provided options.")]
+    Save(ProfileSaveArgs),
+    #[command(about = "List saved profiles.")]
+    List,
+    #[command(about = "Remove a saved profile.")]
+    Rm(ProfileRemoveArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ProfileSaveArgs {
+    #[arg(value_name = "NAME", help = "Profile name to create or update.")]
+    pub name: String,
+    #[command(flatten)]
+    pub options: PasswordOptionsArgs,
+}
+
+#[derive(Debug, Args)]
+pub struct ProfileRemoveArgs {
+    #[arg(value_name = "NAME", help = "Profile name to remove.")]
+    pub name: String,
 }
 
 #[derive(Debug, Subcommand)]

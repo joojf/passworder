@@ -1,13 +1,14 @@
 use rand::Rng;
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub const AMBIGUOUS_CHARACTERS: &[char] = &['0', 'O', 'o', '1', 'l', 'I', '|'];
 
 const SYMBOLS: &str = "!@#$%^&*()-_=+[]{}<>?/\\|~";
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PasswordConfig {
     pub length: usize,
     pub allow_ambiguous: bool,
@@ -15,6 +16,19 @@ pub struct PasswordConfig {
     pub include_uppercase: bool,
     pub include_digits: bool,
     pub include_symbols: bool,
+}
+
+impl Default for PasswordConfig {
+    fn default() -> Self {
+        Self {
+            length: 20,
+            allow_ambiguous: false,
+            include_lowercase: true,
+            include_uppercase: true,
+            include_digits: true,
+            include_symbols: true,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -53,19 +67,16 @@ pub fn generate(config: PasswordConfig) -> Result<String, GenerationError> {
     generate_with_rng(&mut rng, config)
 }
 
+pub fn validate_config(config: &PasswordConfig) -> Result<(), GenerationError> {
+    prepare_character_sets(config).map(|_| ())
+}
+
 pub fn generate_with_rng<R: Rng + ?Sized>(
     rng: &mut R,
     config: PasswordConfig,
 ) -> Result<String, GenerationError> {
-    let char_sets = CharacterSets::new(&config)?;
+    let char_sets = prepare_character_sets(&config)?;
     let classes = char_sets.classes();
-
-    if config.length < classes.len() {
-        return Err(GenerationError::LengthTooShort {
-            required: classes.len(),
-            provided: config.length,
-        });
-    }
 
     let mut password = Vec::with_capacity(config.length);
 
@@ -95,6 +106,20 @@ pub fn generate_with_rng<R: Rng + ?Sized>(
 struct CharacterSets {
     classes: Vec<CharClass>,
     pool: Vec<char>,
+}
+
+fn prepare_character_sets(config: &PasswordConfig) -> Result<CharacterSets, GenerationError> {
+    let char_sets = CharacterSets::new(config)?;
+    let classes = char_sets.classes();
+
+    if config.length < classes.len() {
+        return Err(GenerationError::LengthTooShort {
+            required: classes.len(),
+            provided: config.length,
+        });
+    }
+
+    Ok(char_sets)
 }
 
 impl CharacterSets {
@@ -197,17 +222,6 @@ mod tests {
     use super::*;
     use rand::rngs::mock::StepRng;
 
-    fn base_config() -> PasswordConfig {
-        PasswordConfig {
-            length: 20,
-            allow_ambiguous: false,
-            include_lowercase: true,
-            include_uppercase: true,
-            include_digits: true,
-            include_symbols: true,
-        }
-    }
-
     fn class_chars<'a>(sets: &'a CharacterSets, name: &str) -> &'a [char] {
         sets.classes()
             .iter()
@@ -218,7 +232,7 @@ mod tests {
 
     #[test]
     fn default_generation_meets_requirements() {
-        let config = base_config();
+        let config = PasswordConfig::default();
         let mut rng = StepRng::new(0, 1);
         let password = generate_with_rng(&mut rng, config).expect("password to generate");
 
@@ -257,7 +271,7 @@ mod tests {
 
     #[test]
     fn allows_configuring_length() {
-        let mut config = base_config();
+        let mut config = PasswordConfig::default();
         config.length = 32;
         let mut rng = StepRng::new(0, 1);
         let password = generate_with_rng(&mut rng, config).expect("password to generate");
@@ -267,11 +281,11 @@ mod tests {
 
     #[test]
     fn rejects_insufficient_length() {
-        let mut config = base_config();
+        let mut config = PasswordConfig::default();
         config.length = 3;
         let mut rng = StepRng::new(0, 1);
         let error = generate_with_rng(&mut rng, config).expect_err("length too short");
-        let expected_required = CharacterSets::new(&base_config())
+        let expected_required = CharacterSets::new(&PasswordConfig::default())
             .expect("default classes")
             .classes()
             .len();
@@ -287,7 +301,7 @@ mod tests {
 
     #[test]
     fn ambiguous_characters_present_when_allowed() {
-        let mut config = base_config();
+        let mut config = PasswordConfig::default();
         config.allow_ambiguous = true;
         let sets = CharacterSets::new(&config).expect("character sets");
         for ch in AMBIGUOUS_CHARACTERS {
@@ -300,7 +314,7 @@ mod tests {
 
     #[test]
     fn omits_lowercase_when_disabled() {
-        let mut config = base_config();
+        let mut config = PasswordConfig::default();
         config.include_lowercase = false;
         let mut rng = StepRng::new(0, 1);
         let password = generate_with_rng(&mut rng, config).expect("password to generate");
@@ -311,7 +325,7 @@ mod tests {
 
     #[test]
     fn omits_uppercase_when_disabled() {
-        let mut config = base_config();
+        let mut config = PasswordConfig::default();
         config.include_uppercase = false;
         let mut rng = StepRng::new(0, 1);
         let password = generate_with_rng(&mut rng, config).expect("password to generate");
@@ -322,7 +336,7 @@ mod tests {
 
     #[test]
     fn omits_digits_when_disabled() {
-        let mut config = base_config();
+        let mut config = PasswordConfig::default();
         config.include_digits = false;
         let mut rng = StepRng::new(0, 1);
         let password = generate_with_rng(&mut rng, config).expect("password to generate");
@@ -333,7 +347,7 @@ mod tests {
 
     #[test]
     fn omits_symbols_when_disabled() {
-        let mut config = base_config();
+        let mut config = PasswordConfig::default();
         config.include_symbols = false;
         let mut rng = StepRng::new(0, 1);
         let password = generate_with_rng(&mut rng, config).expect("password to generate");
@@ -344,7 +358,7 @@ mod tests {
 
     #[test]
     fn errors_when_all_classes_disabled() {
-        let mut config = base_config();
+        let mut config = PasswordConfig::default();
         config.include_lowercase = false;
         config.include_uppercase = false;
         config.include_digits = false;

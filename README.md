@@ -60,6 +60,19 @@ The `token` subcommand provides quick random identifiers:
 - `b64` (URL-safe base64 without padding) with `--bytes <N>`.
 - `uuid` generates an RFC 4122 version 4 UUID.
 
+### Profiles
+
+```bash
+cargo run -- profile save team --length 24 --no-digits
+```
+
+Profiles let teams codify password policies:
+
+- `profile save NAME ...flags` stores password options (same flags as `password`).
+- `profile list` shows saved profiles and their settings.
+- `profile rm NAME` removes a profile.
+- `password --profile NAME` generates using the saved settings (flags can still override).
+
 ### Entropy
 
 ```bash

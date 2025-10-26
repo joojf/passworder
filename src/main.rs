@@ -1,4 +1,5 @@
 mod cli;
+mod config;
 mod entropy;
 mod passphrase;
 mod password;
@@ -12,14 +13,18 @@ fn main() -> ExitCode {
 
     match cli.command {
         Some(cli::Commands::Password(args)) => {
-            let config = password::PasswordConfig {
-                length: args.length,
-                allow_ambiguous: args.allow_ambiguous,
-                include_lowercase: args.include_lowercase(),
-                include_uppercase: args.include_uppercase(),
-                include_digits: args.include_digits(),
-                include_symbols: args.include_symbols(),
+            let mut config = match args.profile.as_deref() {
+                Some(name) => match config::get_profile(name) {
+                    Ok(profile) => profile,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return ExitCode::FAILURE;
+                    }
+                },
+                None => password::PasswordConfig::default(),
             };
+
+            args.options.apply_to_config(&mut config);
 
             match password::generate(config) {
                 Ok(password) => {
@@ -32,6 +37,58 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Some(cli::Commands::Profile(profile_args)) => match profile_args.command {
+            cli::ProfileCommands::Save(save_args) => {
+                let mut profile = password::PasswordConfig::default();
+                save_args.options.apply_to_config(&mut profile);
+                match config::save_profile(&save_args.name, profile) {
+                    Ok(()) => {
+                        println!("Saved profile '{}'", save_args.name);
+                        ExitCode::SUCCESS
+                    }
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        ExitCode::FAILURE
+                    }
+                }
+            }
+            cli::ProfileCommands::List => match config::list_profiles() {
+                Ok(profiles) => {
+                    if profiles.is_empty() {
+                        println!("No profiles saved.");
+                    } else {
+                        for (name, profile) in profiles {
+                            println!(
+                                "{name}: length={} lowercase={} uppercase={} digits={} symbols={} allow_ambiguous={}",
+                                profile.length,
+                                profile.include_lowercase,
+                                profile.include_uppercase,
+                                profile.include_digits,
+                                profile.include_symbols,
+                                profile.allow_ambiguous
+                            );
+                        }
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    ExitCode::FAILURE
+                }
+            },
+            cli::ProfileCommands::Rm(remove_args) => {
+                match config::remove_profile(&remove_args.name) {
+                    Ok(()) => {
+                        println!("Removed profile '{}'", remove_args.name);
+                        ExitCode::SUCCESS
+                    }
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        ExitCode::FAILURE
+                    }
+                }
+            }
+        },
         Some(cli::Commands::Passphrase(args)) => {
             let config = passphrase::PassphraseConfig {
                 word_count: args.words,
