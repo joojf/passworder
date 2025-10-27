@@ -29,6 +29,22 @@ Example enforcing uppercase-only passwords with custom length:
 cargo run -- password --length 32 --lowercase=false --no-digits --no-symbols
 ```
 
+### Clipboard Copy
+
+Build with the optional clipboard feature to mirror output to your system clipboard:
+
+```bash
+cargo run --features clipboard -- password --copy
+```
+
+`--copy` works with password, passphrase, token, and entropy outputs. The value is still printed to STDOUT so scripts keep working, but it is also written to the clipboard when the feature is enabled. Without the feature, the flag emits a warning and execution continues.
+
+Security notes:
+- Clipboard contents are shared across applications and history managers; treat copied secrets as exposed until you clear them.
+- On some platforms the clipboard may be unavailable in headless sessions or when access is denied, causing the copy step to fail ([`arboard::Clipboard` docs](https://docs.rs/arboard/latest/arboard/struct.Clipboard.html)).
+
+Remember to clear your clipboard after use if your OS does not do so automatically.
+
 ### Passphrases
 
 ```bash

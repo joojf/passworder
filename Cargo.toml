@@ -3,6 +3,10 @@ name = "passworder"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+clipboard = ["arboard"]
+
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 rand = "0.8"
@@ -13,6 +17,7 @@ serde_json = "1.0"
 toml = "0.8"
 dirs = "5.0"
 tempfile = "3.10"
+arboard = { version = "3", optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.0"

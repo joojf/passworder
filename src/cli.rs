@@ -9,6 +9,12 @@ use std::path::PathBuf;
     long_about = "A Rust-first password generator CLI for developers. Functionality is coming soon."
 )]
 pub struct Cli {
+    #[arg(
+        long,
+        global = true,
+        help = "Copy generated output to the system clipboard (requires `--features clipboard`)."
+    )]
+    pub copy: bool,
     #[command(subcommand)]
     pub command: Option<Commands>,
 }

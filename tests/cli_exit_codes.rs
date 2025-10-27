@@ -11,6 +11,18 @@ fn password_command_succeeds() {
 }
 
 #[test]
+fn password_copy_flag_without_feature_warns() {
+    Command::cargo_bin("passworder")
+        .expect("binary exists")
+        .args(["password", "--copy"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "`--copy` requires building with `--features clipboard`",
+        ));
+}
+
+#[test]
 fn passphrase_missing_wordlist_fails() {
     let path = format!(
         "/tmp/passworder_missing_wordlist_{}.txt",

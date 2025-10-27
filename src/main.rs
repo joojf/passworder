@@ -10,6 +10,7 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let cli = cli::Cli::parse();
+    let copy_requested = cli.copy;
 
     match cli.command {
         Some(cli::Commands::Password(args)) => {
@@ -27,10 +28,7 @@ fn main() -> ExitCode {
             args.options.apply_to_config(&mut config);
 
             match password::generate(config) {
-                Ok(password) => {
-                    println!("{password}");
-                    ExitCode::SUCCESS
-                }
+                Ok(password) => print_and_copy(password, copy_requested),
                 Err(error) => {
                     eprintln!("Error: {error}");
                     ExitCode::FAILURE
@@ -98,10 +96,7 @@ fn main() -> ExitCode {
             };
 
             match passphrase::generate(config) {
-                Ok(phrase) => {
-                    println!("{phrase}");
-                    ExitCode::SUCCESS
-                }
+                Ok(phrase) => print_and_copy(phrase, copy_requested),
                 Err(error) => {
                     eprintln!("Error: {error}");
                     ExitCode::FAILURE
@@ -109,10 +104,7 @@ fn main() -> ExitCode {
             }
         }
         Some(cli::Commands::Token(token_args)) => match token::handle(token_args.command) {
-            Ok(output) => {
-                println!("{output}");
-                ExitCode::SUCCESS
-            }
+            Ok(output) => print_and_copy(output, copy_requested),
             Err(error) => {
                 eprintln!("Error: {error}");
                 ExitCode::FAILURE
@@ -121,10 +113,7 @@ fn main() -> ExitCode {
         Some(cli::Commands::Entropy(args)) => {
             let config = entropy::EntropyConfig { input: args.input };
             match entropy::analyze(config) {
-                Ok(report) => {
-                    println!("{report}");
-                    ExitCode::SUCCESS
-                }
+                Ok(report) => print_and_copy(report, copy_requested),
                 Err(error) => {
                     eprintln!("Error: {error}");
                     ExitCode::FAILURE
@@ -138,4 +127,39 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
     }
+}
+
+fn print_and_copy(output: String, copy_requested: bool) -> ExitCode {
+    println!("{output}");
+    match maybe_copy(&output, copy_requested) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn maybe_copy(output: &str, copy_requested: bool) -> Result<(), String> {
+    if !copy_requested {
+        return Ok(());
+    }
+
+    copy_to_clipboard(output)
+}
+
+#[cfg(feature = "clipboard")]
+fn copy_to_clipboard(output: &str) -> Result<(), String> {
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|error| format!("Failed to access clipboard: {error}"))?;
+    clipboard
+        .set_text(output.to_owned())
+        .map_err(|error| format!("Failed to copy output to clipboard: {error}"))?;
+    Ok(())
+}
+
+#[cfg(not(feature = "clipboard"))]
+fn copy_to_clipboard(_output: &str) -> Result<(), String> {
+    eprintln!("Warning: `--copy` requires building with `--features clipboard`.");
+    Ok(())
 }
