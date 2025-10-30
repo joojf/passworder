@@ -101,6 +101,12 @@ Outputs a JSON report with the input length and a Shannon entropy estimate in bi
 cargo run -- entropy --input "correcthorsebatterystaple"
 ```
 
+Build with `--features strength` to augment the entropy output with [zxcvbn](https://github.com/dropbox/zxcvbn) strength data. When the feature is enabled you will see `guesses_log10`, `score`, and friendly `crack_times_display` strings in the JSON response, matching the library's estimator fields.[^zxcvbn]
+
+Without the feature, the command falls back to the original Shannon estimate so existing consumers remain compatible.
+
+[^zxcvbn]: zxcvbn exposes the strength fields documented in `result.guesses_log10`, `result.score`, and `result.crack_times_display` ([source](https://github.com/dropbox/zxcvbn/blob/master/README.md)).
+
 ## Development
 
 - Rust 1.76+ (2024 edition)

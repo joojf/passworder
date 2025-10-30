@@ -4,7 +4,8 @@ use std::path::PathBuf;
 #[command(
     name = "passworder",
     author,
-    version,
+    version = crate::version::SHORT,
+    long_version = crate::version::LONG,
     about = "A Rust-first password generator CLI for developers.",
     long_about = "A Rust-first password generator CLI for developers. Functionality is coming soon."
 )]

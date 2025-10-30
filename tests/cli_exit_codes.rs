@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
+use serde_json::Value;
 
 #[test]
 fn password_command_succeeds() {
@@ -20,6 +21,22 @@ fn password_copy_flag_without_feature_warns() {
         .stderr(predicate::str::contains(
             "`--copy` requires building with `--features clipboard`",
         ));
+}
+
+#[test]
+fn entropy_strength_fields_absent_without_feature() {
+    let output = Command::cargo_bin("passworder")
+        .expect("binary exists")
+        .args(["entropy", "--input", "abc"])
+        .output()
+        .expect("entropy output");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).expect("valid json");
+    assert!(json.get("score").is_none());
+    assert!(json.get("guesses_log10").is_none());
+    assert!(json.get("crack_times_display").is_none());
 }
 
 #[test]

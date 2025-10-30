@@ -8,6 +8,7 @@ pub enum EntropyError {
     Io(std::io::Error),
     InvalidUtf8,
     Serialization(serde_json::Error),
+    Strength(String),
 }
 
 impl fmt::Display for EntropyError {
@@ -16,6 +17,7 @@ impl fmt::Display for EntropyError {
             EntropyError::Io(err) => write!(f, "failed to read input: {err}"),
             EntropyError::InvalidUtf8 => write!(f, "STDIN contains invalid UTF-8 data"),
             EntropyError::Serialization(err) => write!(f, "failed to serialize report: {err}"),
+            EntropyError::Strength(err) => write!(f, "failed to calculate strength: {err}"),
         }
     }
 }
@@ -26,6 +28,7 @@ impl std::error::Error for EntropyError {
             EntropyError::Io(err) => Some(err),
             EntropyError::Serialization(err) => Some(err),
             EntropyError::InvalidUtf8 => None,
+            EntropyError::Strength(_) => None,
         }
     }
 }
@@ -39,6 +42,24 @@ pub struct EntropyConfig {
 struct EntropyReport {
     length: usize,
     shannon_bits_estimate: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guesses_log10: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    score: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    crack_times_display: Option<CrackTimesDisplayReport>,
+}
+
+impl EntropyReport {
+    fn new(length: usize, shannon_bits_estimate: f64) -> Self {
+        Self {
+            length,
+            shannon_bits_estimate,
+            guesses_log10: None,
+            score: None,
+            crack_times_display: None,
+        }
+    }
 }
 
 pub fn analyze(config: EntropyConfig) -> Result<String, EntropyError> {
@@ -65,10 +86,10 @@ fn analyze_with_reader<R: Read>(
     let estimate = round_to_precision(shannon_bits, 6);
     let estimate = if estimate == 0.0 { 0.0 } else { estimate };
 
-    let report = EntropyReport {
-        length,
-        shannon_bits_estimate: estimate,
-    };
+    let mut report = EntropyReport::new(length, estimate);
+
+    #[cfg(feature = "strength")]
+    apply_strength(&mut report, &input)?;
 
     serde_json::to_string(&report).map_err(EntropyError::Serialization)
 }
@@ -100,6 +121,42 @@ fn round_to_precision(value: f64, decimals: u32) -> f64 {
     (value * factor).round() / factor
 }
 
+#[cfg_attr(not(feature = "strength"), allow(dead_code))]
+#[derive(Debug, Serialize, Deserialize)]
+struct CrackTimesDisplayReport {
+    online_throttling_100_per_hour: String,
+    online_no_throttling_10_per_second: String,
+    offline_slow_hashing_1e4_per_second: String,
+    offline_fast_hashing_1e10_per_second: String,
+}
+
+#[cfg(feature = "strength")]
+fn apply_strength(report: &mut EntropyReport, input: &str) -> Result<(), EntropyError> {
+    let strength =
+        zxcvbn::zxcvbn(input, &[]).map_err(|error| EntropyError::Strength(error.to_string()))?;
+
+    report.guesses_log10 = Some(strength.guesses_log10());
+    report.score = Some(strength.score());
+
+    let display = strength.crack_times().display();
+    report.crack_times_display = Some(CrackTimesDisplayReport {
+        online_throttling_100_per_hour: display
+            .online_throttling_100_per_hour()
+            .to_string(),
+        online_no_throttling_10_per_second: display
+            .online_no_throttling_10_per_second()
+            .to_string(),
+        offline_slow_hashing_1e4_per_second: display
+            .offline_slow_hashing_1e4_per_second()
+            .to_string(),
+        offline_fast_hashing_1e10_per_second: display
+            .offline_fast_hashing_1e10_per_second()
+            .to_string(),
+    });
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +176,9 @@ mod tests {
         let value: EntropyReport = serde_json::from_str(&report).unwrap();
         assert_eq!(value.length, 0);
         assert_eq!(value.shannon_bits_estimate, 0.0);
+        assert!(value.guesses_log10.is_none());
+        assert!(value.score.is_none());
+        assert!(value.crack_times_display.is_none());
     }
 
     #[test]

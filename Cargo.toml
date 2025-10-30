@@ -6,6 +6,7 @@ edition = "2024"
 [features]
 default = []
 clipboard = ["arboard"]
+strength = ["zxcvbn"]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -18,6 +19,7 @@ toml = "0.8"
 dirs = "5.0"
 tempfile = "3.10"
 arboard = { version = "3", optional = true }
+zxcvbn = { version = "2", optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.0"

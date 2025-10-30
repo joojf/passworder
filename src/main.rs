@@ -4,6 +4,7 @@ mod entropy;
 mod passphrase;
 mod password;
 mod token;
+mod version;
 
 use clap::{CommandFactory, Parser};
 use std::process::ExitCode;
