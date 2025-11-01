@@ -86,6 +86,7 @@ fn analyze_with_reader<R: Read>(
     let estimate = round_to_precision(shannon_bits, 6);
     let estimate = if estimate == 0.0 { 0.0 } else { estimate };
 
+    #[cfg_attr(not(feature = "strength"), allow(unused_mut))]
     let mut report = EntropyReport::new(length, estimate);
 
     #[cfg(feature = "strength")]
@@ -140,9 +141,7 @@ fn apply_strength(report: &mut EntropyReport, input: &str) -> Result<(), Entropy
 
     let display = strength.crack_times().display();
     report.crack_times_display = Some(CrackTimesDisplayReport {
-        online_throttling_100_per_hour: display
-            .online_throttling_100_per_hour()
-            .to_string(),
+        online_throttling_100_per_hour: display.online_throttling_100_per_hour().to_string(),
         online_no_throttling_10_per_second: display
             .online_no_throttling_10_per_second()
             .to_string(),
