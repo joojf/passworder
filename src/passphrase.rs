@@ -2,7 +2,8 @@ use rand::Rng;
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 use std::fmt;
-use std::fs;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
 const BUILTIN_WORDS: &[&str] = &[
@@ -107,17 +108,34 @@ fn load_words(
     config: &PassphraseConfig,
 ) -> Result<(Vec<String>, Option<PathBuf>), PassphraseError> {
     if let Some(path) = &config.wordlist {
-        let contents = fs::read_to_string(path).map_err(|source| PassphraseError::Io {
+        let path = path.clone();
+        let file = File::open(&path).map_err(|source| PassphraseError::Io {
             path: path.clone(),
             source,
         })?;
 
-        let words: Vec<String> = contents
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .map(|line| line.to_string())
-            .collect();
+        let mut reader = BufReader::new(file);
+        let mut words = Vec::new();
+        let mut line = String::new();
+
+        loop {
+            line.clear();
+            let bytes_read = reader.read_line(&mut line).map_err(|source| PassphraseError::Io {
+                path: path.clone(),
+                source,
+            })?;
+
+            if bytes_read == 0 {
+                break;
+            }
+
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            words.push(trimmed.to_owned());
+        }
 
         if words.is_empty() {
             return Err(PassphraseError::EmptyWordList {
@@ -125,7 +143,7 @@ fn load_words(
             });
         }
 
-        Ok((words, Some(path.clone())))
+        Ok((words, Some(path)))
     } else {
         if BUILTIN_WORDS.is_empty() {
             return Err(PassphraseError::EmptyWordList { path: None });
@@ -253,5 +271,26 @@ mod tests {
 
         let err = generate_with_rng(&mut rng, config).expect_err("expect error");
         assert!(matches!(err, PassphraseError::WordCountZero));
+    }
+
+    #[test]
+    fn custom_wordlist_trims_and_skips_blank_lines() {
+        let mut file = NamedTempFile::new().expect("temp file");
+        writeln!(file, "   alpha   ").unwrap();
+        writeln!(file, "   ").unwrap();
+        writeln!(file, "\tbeta").unwrap();
+        writeln!(file, "gamma\t").unwrap();
+        file.flush().unwrap();
+
+        let path = file.path().to_path_buf();
+        let mut config = base_config();
+        config.wordlist = Some(path.clone());
+
+        let (words, source) = load_words(&config).expect("wordlist to load");
+        assert_eq!(source, Some(path));
+        assert_eq!(
+            words,
+            vec!["alpha".to_string(), "beta".to_string(), "gamma".to_string()]
+        );
     }
 }

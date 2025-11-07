@@ -64,6 +64,13 @@ Example using a custom Diceware file and spaces:
 cargo run -- passphrase --wordlist ~/diceware.txt --separator " " --words 8 --title
 ```
 
+#### Custom word lists
+
+- `--wordlist` expects a UTF-8 text file with one entry per line. Lines are streamed, trimmed, and blank entries are ignored so it is safe to include comments or spacing for readability.
+- The loader reads the file incrementally, so memory usage is roughly the size of the normalized vocabulary. As a rule of thumb, a 100k-word Diceware list with 8-character averages stays under ~2 MB of RAM (roughly `word_count * (avg_len + 8 bytes)` for `String` storage).
+- Sequential I/O dominates load time. Keeping large lists on SSD/NVMe storage avoids the extra seek latency you would see on HDDs; on spinning disks expect the first load to take noticeably longer until the OS cache is warm.
+- Invalid UTF-8 or empty lists trigger descriptive errors so CI pipelines can surface bad enterprise-approved word lists quickly.
+
 ### Tokens
 
 ```bash
