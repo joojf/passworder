@@ -16,6 +16,14 @@ pub struct PasswordConfig {
     pub include_uppercase: bool,
     pub include_digits: bool,
     pub include_symbols: bool,
+    #[serde(default)]
+    pub min_lowercase: usize,
+    #[serde(default)]
+    pub min_uppercase: usize,
+    #[serde(default)]
+    pub min_digits: usize,
+    #[serde(default)]
+    pub min_symbols: usize,
 }
 
 impl Default for PasswordConfig {
@@ -27,6 +35,10 @@ impl Default for PasswordConfig {
             include_uppercase: true,
             include_digits: true,
             include_symbols: true,
+            min_lowercase: 1,
+            min_uppercase: 1,
+            min_digits: 1,
+            min_symbols: 1,
         }
     }
 }
@@ -37,6 +49,7 @@ pub enum GenerationError {
     EmptyPool,
     LengthTooShort { required: usize, provided: usize },
     NoClassesEnabled,
+    MinimumRequiresDisabledClass(&'static str),
 }
 
 impl fmt::Display for GenerationError {
@@ -51,11 +64,15 @@ impl fmt::Display for GenerationError {
             GenerationError::EmptyPool => write!(f, "combined character pool is empty"),
             GenerationError::LengthTooShort { required, provided } => write!(
                 f,
-                "password length {provided} is too short; need at least {required} to cover all classes"
+                "password length {provided} is too short; need at least {required} characters to satisfy minimum requirements"
             ),
             GenerationError::NoClassesEnabled => {
                 write!(f, "at least one character class must be enabled")
             }
+            GenerationError::MinimumRequiresDisabledClass(class) => write!(
+                f,
+                "minimum requirement specified for disabled character class '{class}'"
+            ),
         }
     }
 }
@@ -81,11 +98,13 @@ pub fn generate_with_rng<R: Rng + ?Sized>(
     let mut password = Vec::with_capacity(config.length);
 
     for class in classes {
-        password.push(
-            class
-                .sample(rng)
-                .ok_or(GenerationError::EmptyClass(class.name()))?,
-        );
+        for _ in 0..class.required_min() {
+            password.push(
+                class
+                    .sample(rng)
+                    .ok_or(GenerationError::EmptyClass(class.name()))?,
+            );
+        }
     }
 
     let pool = char_sets.pool();
@@ -110,11 +129,12 @@ struct CharacterSets {
 
 fn prepare_character_sets(config: &PasswordConfig) -> Result<CharacterSets, GenerationError> {
     let char_sets = CharacterSets::new(config)?;
-    let classes = char_sets.classes();
 
-    if config.length < classes.len() {
+    let required = char_sets.total_required_min();
+
+    if config.length < required {
         return Err(GenerationError::LengthTooShort {
-            required: classes.len(),
+            required,
             provided: config.length,
         });
     }
@@ -131,7 +151,9 @@ impl CharacterSets {
             if chars.is_empty() {
                 return Err(GenerationError::EmptyClass("uppercase"));
             }
-            classes.push(CharClass::new("uppercase", chars));
+            classes.push(CharClass::new("uppercase", chars, config.min_uppercase));
+        } else if config.min_uppercase > 0 {
+            return Err(GenerationError::MinimumRequiresDisabledClass("uppercase"));
         }
 
         if config.include_lowercase {
@@ -139,7 +161,9 @@ impl CharacterSets {
             if chars.is_empty() {
                 return Err(GenerationError::EmptyClass("lowercase"));
             }
-            classes.push(CharClass::new("lowercase", chars));
+            classes.push(CharClass::new("lowercase", chars, config.min_lowercase));
+        } else if config.min_lowercase > 0 {
+            return Err(GenerationError::MinimumRequiresDisabledClass("lowercase"));
         }
 
         if config.include_digits {
@@ -147,7 +171,9 @@ impl CharacterSets {
             if chars.is_empty() {
                 return Err(GenerationError::EmptyClass("digits"));
             }
-            classes.push(CharClass::new("digits", chars));
+            classes.push(CharClass::new("digits", chars, config.min_digits));
+        } else if config.min_digits > 0 {
+            return Err(GenerationError::MinimumRequiresDisabledClass("digits"));
         }
 
         if config.include_symbols {
@@ -155,7 +181,9 @@ impl CharacterSets {
             if chars.is_empty() {
                 return Err(GenerationError::EmptyClass("symbols"));
             }
-            classes.push(CharClass::new("symbols", chars));
+            classes.push(CharClass::new("symbols", chars, config.min_symbols));
+        } else if config.min_symbols > 0 {
+            return Err(GenerationError::MinimumRequiresDisabledClass("symbols"));
         }
 
         if classes.is_empty() {
@@ -181,16 +209,25 @@ impl CharacterSets {
     fn pool(&self) -> &[char] {
         &self.pool
     }
+
+    fn total_required_min(&self) -> usize {
+        self.classes.iter().map(|class| class.required_min()).sum()
+    }
 }
 
 struct CharClass {
     name: &'static str,
     chars: Vec<char>,
+    required_min: usize,
 }
 
 impl CharClass {
-    fn new(name: &'static str, chars: Vec<char>) -> Self {
-        Self { name, chars }
+    fn new(name: &'static str, chars: Vec<char>, required_min: usize) -> Self {
+        Self {
+            name,
+            chars,
+            required_min,
+        }
     }
 
     fn name(&self) -> &'static str {
@@ -199,6 +236,10 @@ impl CharClass {
 
     fn chars(&self) -> &[char] {
         &self.chars
+    }
+
+    fn required_min(&self) -> usize {
+        self.required_min
     }
 
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Option<char> {
@@ -228,6 +269,10 @@ mod tests {
             .find(|class| class.name() == name)
             .map(|class| class.chars())
             .expect("class to exist")
+    }
+
+    fn count_matching(password: &str, class: &[char]) -> usize {
+        password.chars().filter(|ch| class.contains(ch)).count()
     }
 
     #[test]
@@ -287,8 +332,7 @@ mod tests {
         let error = generate_with_rng(&mut rng, config).expect_err("length too short");
         let expected_required = CharacterSets::new(&PasswordConfig::default())
             .expect("default classes")
-            .classes()
-            .len();
+            .total_required_min();
 
         match error {
             GenerationError::LengthTooShort { required, provided } => {
@@ -316,6 +360,7 @@ mod tests {
     fn omits_lowercase_when_disabled() {
         let mut config = PasswordConfig::default();
         config.include_lowercase = false;
+        config.min_lowercase = 0;
         let mut rng = StepRng::new(0, 1);
         let password = generate_with_rng(&mut rng, config).expect("password to generate");
 
@@ -327,6 +372,7 @@ mod tests {
     fn omits_uppercase_when_disabled() {
         let mut config = PasswordConfig::default();
         config.include_uppercase = false;
+        config.min_uppercase = 0;
         let mut rng = StepRng::new(0, 1);
         let password = generate_with_rng(&mut rng, config).expect("password to generate");
 
@@ -338,6 +384,7 @@ mod tests {
     fn omits_digits_when_disabled() {
         let mut config = PasswordConfig::default();
         config.include_digits = false;
+        config.min_digits = 0;
         let mut rng = StepRng::new(0, 1);
         let password = generate_with_rng(&mut rng, config).expect("password to generate");
 
@@ -349,6 +396,7 @@ mod tests {
     fn omits_symbols_when_disabled() {
         let mut config = PasswordConfig::default();
         config.include_symbols = false;
+        config.min_symbols = 0;
         let mut rng = StepRng::new(0, 1);
         let password = generate_with_rng(&mut rng, config).expect("password to generate");
 
@@ -363,11 +411,48 @@ mod tests {
         config.include_uppercase = false;
         config.include_digits = false;
         config.include_symbols = false;
+        config.min_lowercase = 0;
+        config.min_uppercase = 0;
+        config.min_digits = 0;
+        config.min_symbols = 0;
         let mut rng = StepRng::new(0, 1);
         let error = generate_with_rng(&mut rng, config).expect_err("should fail");
 
         match error {
             GenerationError::NoClassesEnabled => {}
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn enforces_explicit_minimums() {
+        let mut config = PasswordConfig::default();
+        config.length = 18;
+        config.min_lowercase = 5;
+        config.min_uppercase = 4;
+        config.min_digits = 3;
+        config.min_symbols = 2;
+
+        let mut rng = StepRng::new(0, 1);
+        let password = generate_with_rng(&mut rng, config).expect("password to generate");
+        let sets = CharacterSets::new(&config).expect("character sets");
+
+        assert!(count_matching(&password, class_chars(&sets, "lowercase")) >= config.min_lowercase);
+        assert!(count_matching(&password, class_chars(&sets, "uppercase")) >= config.min_uppercase);
+        assert!(count_matching(&password, class_chars(&sets, "digits")) >= config.min_digits);
+        assert!(count_matching(&password, class_chars(&sets, "symbols")) >= config.min_symbols);
+    }
+
+    #[test]
+    fn minimum_requires_enabled_class() {
+        let mut config = PasswordConfig::default();
+        config.include_symbols = false;
+        config.min_symbols = 1;
+        let mut rng = StepRng::new(0, 1);
+        let error = generate_with_rng(&mut rng, config).expect_err("should fail");
+
+        match error {
+            GenerationError::MinimumRequiresDisabledClass("symbols") => {}
             other => panic!("unexpected error: {other:?}"),
         }
     }

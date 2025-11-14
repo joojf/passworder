@@ -87,6 +87,14 @@ pub struct PasswordOptionsArgs {
     pub no_lowercase: bool,
 
     #[arg(
+        long = "min-lower",
+        value_name = "N",
+        help = "Require at least N lowercase characters.",
+        value_parser = clap::value_parser!(usize)
+    )]
+    pub min_lower: Option<usize>,
+
+    #[arg(
         long,
         value_name = "BOOL",
         help = "Include uppercase letters (A-Z).",
@@ -100,6 +108,14 @@ pub struct PasswordOptionsArgs {
         help = "Disable uppercase letters."
     )]
     pub no_uppercase: bool,
+
+    #[arg(
+        long = "min-upper",
+        value_name = "N",
+        help = "Require at least N uppercase characters.",
+        value_parser = clap::value_parser!(usize)
+    )]
+    pub min_upper: Option<usize>,
 
     #[arg(
         long,
@@ -117,6 +133,14 @@ pub struct PasswordOptionsArgs {
     pub no_digits: bool,
 
     #[arg(
+        long = "min-digit",
+        value_name = "N",
+        help = "Require at least N digits.",
+        value_parser = clap::value_parser!(usize)
+    )]
+    pub min_digit: Option<usize>,
+
+    #[arg(
         long,
         value_name = "BOOL",
         help = "Include symbol characters.",
@@ -130,6 +154,14 @@ pub struct PasswordOptionsArgs {
         help = "Disable symbol characters."
     )]
     pub no_symbols: bool,
+
+    #[arg(
+        long = "min-symbol",
+        value_name = "N",
+        help = "Require at least N symbols.",
+        value_parser = clap::value_parser!(usize)
+    )]
+    pub min_symbol: Option<usize>,
 }
 
 impl PasswordOptionsArgs {
@@ -148,13 +180,50 @@ impl PasswordOptionsArgs {
             self.no_lowercase,
             &mut config.include_lowercase,
         );
+        if !config.include_lowercase {
+            config.min_lowercase = 0;
+        }
         apply_bool_option(
             self.uppercase,
             self.no_uppercase,
             &mut config.include_uppercase,
         );
+        if !config.include_uppercase {
+            config.min_uppercase = 0;
+        }
         apply_bool_option(self.digits, self.no_digits, &mut config.include_digits);
+        if !config.include_digits {
+            config.min_digits = 0;
+        }
         apply_bool_option(self.symbols, self.no_symbols, &mut config.include_symbols);
+        if !config.include_symbols {
+            config.min_symbols = 0;
+        }
+
+        if let Some(min_lower) = self.min_lower {
+            config.min_lowercase = min_lower;
+            if min_lower > 0 {
+                config.include_lowercase = true;
+            }
+        }
+        if let Some(min_upper) = self.min_upper {
+            config.min_uppercase = min_upper;
+            if min_upper > 0 {
+                config.include_uppercase = true;
+            }
+        }
+        if let Some(min_digit) = self.min_digit {
+            config.min_digits = min_digit;
+            if min_digit > 0 {
+                config.include_digits = true;
+            }
+        }
+        if let Some(min_symbol) = self.min_symbol {
+            config.min_symbols = min_symbol;
+            if min_symbol > 0 {
+                config.include_symbols = true;
+            }
+        }
     }
 }
 

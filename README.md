@@ -21,6 +21,8 @@ The command returns a 20-character password drawn from upper, lower, digit, and 
 - `--uppercase=<bool>` / `--no-uppercase`: toggle uppercase letters.
 - `--digits=<bool>` / `--no-digits`: toggle digits.
 - `--symbols=<bool>` / `--no-symbols`: toggle symbol characters.
+- `--min-lower <N>` / `--min-upper <N>` / `--min-digit <N>` / `--min-symbol <N>`: require at least `N` characters from the respective class (defaults to `1` for enabled classes).
+- Total required characters (sum of the `--min-*` values for enabled classes) must not exceed `--length`.
 - `--allow-ambiguous`: allow characters such as `0`, `O`, `l`, `1`, and `|`.
 
 Example enforcing uppercase-only passwords with custom length:

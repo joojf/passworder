@@ -58,12 +58,16 @@ fn main() -> ExitCode {
                     } else {
                         for (name, profile) in profiles {
                             println!(
-                                "{name}: length={} lowercase={} uppercase={} digits={} symbols={} allow_ambiguous={}",
+                                "{name}: length={} lowercase={} min_lower={} uppercase={} min_upper={} digits={} min_digit={} symbols={} min_symbol={} allow_ambiguous={}",
                                 profile.length,
                                 profile.include_lowercase,
+                                profile.min_lowercase,
                                 profile.include_uppercase,
+                                profile.min_uppercase,
                                 profile.include_digits,
+                                profile.min_digits,
                                 profile.include_symbols,
+                                profile.min_symbols,
                                 profile.allow_ambiguous
                             );
                         }
@@ -151,8 +155,8 @@ fn maybe_copy(output: &str, copy_requested: bool) -> Result<(), String> {
 
 #[cfg(feature = "clipboard")]
 fn copy_to_clipboard(output: &str) -> Result<(), String> {
-    let mut clipboard =
-        arboard::Clipboard::new().map_err(|error| format!("Failed to access clipboard: {error}"))?;
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|error| format!("Failed to access clipboard: {error}"))?;
     clipboard
         .set_text(output.to_owned())
         .map_err(|error| format!("Failed to copy output to clipboard: {error}"))?;

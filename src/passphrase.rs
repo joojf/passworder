@@ -120,10 +120,12 @@ fn load_words(
 
         loop {
             line.clear();
-            let bytes_read = reader.read_line(&mut line).map_err(|source| PassphraseError::Io {
-                path: path.clone(),
-                source,
-            })?;
+            let bytes_read = reader
+                .read_line(&mut line)
+                .map_err(|source| PassphraseError::Io {
+                    path: path.clone(),
+                    source,
+                })?;
 
             if bytes_read == 0 {
                 break;

@@ -13,7 +13,7 @@ use tempfile::NamedTempFile;
 const CONFIG_ENV: &str = "PASSWORDER_CONFIG";
 const APP_DIR: &str = "passworder";
 const CONFIG_FILE_NAME: &str = "config.toml";
-const CURRENT_SCHEMA_VERSION: u32 = 1;
+const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug)]
 pub enum ConfigError {
@@ -145,6 +145,10 @@ fn maybe_upgrade_config(path: &Path, mut config: FileConfig) -> Result<FileConfi
                 // Initial migration: record schema version without changing structure.
                 version = 1;
             }
+            1 => {
+                upgrade_profiles_to_v2(&mut config);
+                version = 2;
+            }
             _ => {
                 return Err(ConfigError::UnsupportedSchemaVersion(version));
             }
@@ -154,6 +158,25 @@ fn maybe_upgrade_config(path: &Path, mut config: FileConfig) -> Result<FileConfi
     config.ensure_current_version();
     persist_config(path, &config)?;
     Ok(config)
+}
+
+fn upgrade_profiles_to_v2(config: &mut FileConfig) {
+    for profile in config.profiles.values_mut() {
+        upgrade_minimum(&mut profile.min_lowercase, profile.include_lowercase);
+        upgrade_minimum(&mut profile.min_uppercase, profile.include_uppercase);
+        upgrade_minimum(&mut profile.min_digits, profile.include_digits);
+        upgrade_minimum(&mut profile.min_symbols, profile.include_symbols);
+    }
+}
+
+fn upgrade_minimum(min_value: &mut usize, class_enabled: bool) {
+    if class_enabled {
+        if *min_value == 0 {
+            *min_value = 1;
+        }
+    } else {
+        *min_value = 0;
+    }
 }
 
 fn backup_config(path: &Path) -> Result<(), ConfigError> {
@@ -253,7 +276,11 @@ include_symbols = false
         assert_eq!(config.schema_version(), CURRENT_SCHEMA_VERSION);
 
         let updated_contents = fs::read_to_string(&path).expect("read updated config");
-        assert!(updated_contents.contains("schema_version = 1"));
+        assert!(updated_contents.contains("schema_version = 2"));
+        assert!(updated_contents.contains("min_lowercase = 1"));
+        assert!(updated_contents.contains("min_uppercase = 1"));
+        assert!(updated_contents.contains("min_digits = 1"));
+        assert!(updated_contents.contains("min_symbols = 0"));
 
         let backups: Vec<_> = fs::read_dir(dir.path())
             .expect("read dir")
