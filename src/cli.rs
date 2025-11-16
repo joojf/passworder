@@ -16,6 +16,17 @@ pub struct Cli {
         help = "Copy generated output to the system clipboard (requires `--features clipboard`)."
     )]
     pub copy: bool,
+
+    #[cfg(any(debug_assertions, feature = "dev-seed"))]
+    #[arg(
+        long = "dev-seed",
+        global = true,
+        value_name = "N",
+        help = "⚠️  DEV ONLY: Use a deterministic seed for reproducible output (testing only).",
+        value_parser = clap::value_parser!(u64)
+    )]
+    pub dev_seed: Option<u64>,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }

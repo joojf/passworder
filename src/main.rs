@@ -9,9 +9,25 @@ mod version;
 use clap::{CommandFactory, Parser};
 use std::process::ExitCode;
 
+#[cfg(any(debug_assertions, feature = "dev-seed"))]
+fn emit_dev_seed_warning(seed: u64) {
+    eprintln!("⚠️  WARNING: Using dev seed ({}) - output is deterministic and NOT cryptographically secure!", seed);
+    eprintln!("⚠️  This mode is for testing only. Never use in production.");
+}
+
 fn main() -> ExitCode {
     let cli = cli::Cli::parse();
     let copy_requested = cli.copy;
+
+    #[cfg(any(debug_assertions, feature = "dev-seed"))]
+    let dev_seed = cli.dev_seed;
+    #[cfg(not(any(debug_assertions, feature = "dev-seed")))]
+    let dev_seed: Option<u64> = None;
+
+    #[cfg(any(debug_assertions, feature = "dev-seed"))]
+    if let Some(seed) = dev_seed {
+        emit_dev_seed_warning(seed);
+    }
 
     match cli.command {
         Some(cli::Commands::Password(args)) => {
@@ -28,7 +44,7 @@ fn main() -> ExitCode {
 
             args.options.apply_to_config(&mut config);
 
-            match password::generate(config) {
+            match password::generate(config, dev_seed) {
                 Ok(password) => print_and_copy(password, copy_requested),
                 Err(error) => {
                     eprintln!("Error: {error}");
@@ -100,7 +116,7 @@ fn main() -> ExitCode {
                 wordlist: args.wordlist.clone(),
             };
 
-            match passphrase::generate(config) {
+            match passphrase::generate(config, dev_seed) {
                 Ok(phrase) => print_and_copy(phrase, copy_requested),
                 Err(error) => {
                     eprintln!("Error: {error}");
@@ -108,7 +124,7 @@ fn main() -> ExitCode {
                 }
             }
         }
-        Some(cli::Commands::Token(token_args)) => match token::handle(token_args.command) {
+        Some(cli::Commands::Token(token_args)) => match token::handle(token_args.command, dev_seed) {
             Ok(output) => print_and_copy(output, copy_requested),
             Err(error) => {
                 eprintln!("Error: {error}");

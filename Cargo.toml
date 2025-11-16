@@ -7,6 +7,7 @@ edition = "2024"
 default = []
 clipboard = ["arboard"]
 strength = ["zxcvbn"]
+dev-seed = []
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }

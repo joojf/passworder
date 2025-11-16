@@ -4,6 +4,9 @@ use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+#[cfg(any(debug_assertions, feature = "dev-seed"))]
+use rand::{rngs::StdRng, SeedableRng};
+
 pub const AMBIGUOUS_CHARACTERS: &[char] = &['0', 'O', 'o', '1', 'l', 'I', '|'];
 
 const SYMBOLS: &str = "!@#$%^&*()-_=+[]{}<>?/\\|~";
@@ -79,7 +82,19 @@ impl fmt::Display for GenerationError {
 
 impl std::error::Error for GenerationError {}
 
-pub fn generate(config: PasswordConfig) -> Result<String, GenerationError> {
+#[cfg(any(debug_assertions, feature = "dev-seed"))]
+pub fn generate(config: PasswordConfig, seed: Option<u64>) -> Result<String, GenerationError> {
+    if let Some(seed_value) = seed {
+        let mut rng = StdRng::seed_from_u64(seed_value);
+        generate_with_rng(&mut rng, config)
+    } else {
+        let mut rng = OsRng;
+        generate_with_rng(&mut rng, config)
+    }
+}
+
+#[cfg(not(any(debug_assertions, feature = "dev-seed")))]
+pub fn generate(config: PasswordConfig, _seed: Option<u64>) -> Result<String, GenerationError> {
     let mut rng = OsRng;
     generate_with_rng(&mut rng, config)
 }

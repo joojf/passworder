@@ -6,6 +6,9 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
+#[cfg(any(debug_assertions, feature = "dev-seed"))]
+use rand::{rngs::StdRng, SeedableRng};
+
 const BUILTIN_WORDS: &[&str] = &[
     "anchor", "binary", "cobalt", "delta", "ember", "flux", "gamma", "harbor", "ion", "jolt",
     "keystone", "lumen", "matrix", "nebula", "oxide", "pixel", "quartz", "radial", "sonic",
@@ -67,7 +70,19 @@ impl std::error::Error for PassphraseError {
     }
 }
 
-pub fn generate(config: PassphraseConfig) -> Result<String, PassphraseError> {
+#[cfg(any(debug_assertions, feature = "dev-seed"))]
+pub fn generate(config: PassphraseConfig, seed: Option<u64>) -> Result<String, PassphraseError> {
+    if let Some(seed_value) = seed {
+        let mut rng = StdRng::seed_from_u64(seed_value);
+        generate_with_rng(&mut rng, config)
+    } else {
+        let mut rng = OsRng;
+        generate_with_rng(&mut rng, config)
+    }
+}
+
+#[cfg(not(any(debug_assertions, feature = "dev-seed")))]
+pub fn generate(config: PassphraseConfig, _seed: Option<u64>) -> Result<String, PassphraseError> {
     let mut rng = OsRng;
     generate_with_rng(&mut rng, config)
 }
