@@ -6,9 +6,14 @@ mod password;
 mod token;
 mod version;
 
-use clap::{CommandFactory, Parser};
+use clap::{error::ErrorKind as ClapErrorKind, ColorChoice, CommandFactory, FromArgMatches};
 use serde_json::json;
+use std::io::IsTerminal;
 use std::process::ExitCode;
+
+const EXIT_USAGE: u8 = 64;
+const EXIT_IO: u8 = 2;
+const EXIT_SOFTWARE: u8 = 1;
 
 #[cfg(any(debug_assertions, feature = "dev-seed"))]
 fn emit_dev_seed_warning(seed: u64) {
@@ -17,7 +22,10 @@ fn emit_dev_seed_warning(seed: u64) {
 }
 
 fn main() -> ExitCode {
-    let cli = cli::Cli::parse();
+    let cli = match parse_cli() {
+        Ok(cli) => cli,
+        Err(code) => return code,
+    };
     let copy_requested = cli.copy;
     let output_mode = OutputMode {
         json: cli.json,
@@ -41,7 +49,7 @@ fn main() -> ExitCode {
                     Ok(profile) => profile,
                     Err(error) => {
                         eprintln!("Error: {error}");
-                        return ExitCode::FAILURE;
+                        return exit_code_for_config_error(&error);
                     }
                 },
                 None => password::PasswordConfig::default(),
@@ -62,7 +70,7 @@ fn main() -> ExitCode {
                 ),
                 Err(error) => {
                     eprintln!("Error: {error}");
-                    ExitCode::FAILURE
+                    exit_code_for_password_error(&error)
                 }
             }
         }
@@ -87,7 +95,7 @@ fn main() -> ExitCode {
                     }
                     Err(error) => {
                         eprintln!("Error: {error}");
-                        ExitCode::FAILURE
+                        exit_code_for_config_error(&error)
                     }
                 }
             }
@@ -127,7 +135,7 @@ fn main() -> ExitCode {
                 }
                 Err(error) => {
                     eprintln!("Error: {error}");
-                    ExitCode::FAILURE
+                    exit_code_for_config_error(&error)
                 }
             },
             cli::ProfileCommands::Rm(remove_args) => {
@@ -148,7 +156,7 @@ fn main() -> ExitCode {
                     }
                     Err(error) => {
                         eprintln!("Error: {error}");
-                        ExitCode::FAILURE
+                        exit_code_for_config_error(&error)
                     }
                 }
             }
@@ -180,7 +188,7 @@ fn main() -> ExitCode {
                 ),
                 Err(error) => {
                     eprintln!("Error: {error}");
-                    ExitCode::FAILURE
+                    exit_code_for_passphrase_error(&error)
                 }
             }
         }
@@ -195,7 +203,7 @@ fn main() -> ExitCode {
             ),
             Err(error) => {
                 eprintln!("Error: {error}");
-                ExitCode::FAILURE
+                exit_code_for_token_error(&error)
             }
         },
         Some(cli::Commands::Entropy(args)) => {
@@ -230,17 +238,57 @@ fn main() -> ExitCode {
                 }
                 Err(error) => {
                     eprintln!("Error: {error}");
-                    ExitCode::FAILURE
+                    exit_code_for_entropy_error(&error)
                 }
             }
         }
         None => {
-            let mut cmd = cli::Cli::command();
+            // No subcommand provided; show help and exit with usage code.
+            let mut cmd = configure_command_colors(cli::Cli::command());
             cmd.print_help().expect("help to be printed");
             println!();
-            ExitCode::SUCCESS
+            ExitCode::from(EXIT_USAGE)
         }
     }
+}
+
+fn parse_cli() -> Result<cli::Cli, ExitCode> {
+    let mut cmd = configure_command_colors(cli::Cli::command());
+
+    let matches = match cmd.try_get_matches() {
+        Ok(matches) => matches,
+        Err(err) => {
+            let kind = err.kind();
+            // Help/version are treated as successful exits.
+            if matches!(kind, ClapErrorKind::DisplayHelp | ClapErrorKind::DisplayVersion) {
+                let _ = err.print();
+                return Err(ExitCode::SUCCESS);
+            }
+
+            let _ = err.print();
+            return Err(ExitCode::from(EXIT_USAGE));
+        }
+    };
+
+    match cli::Cli::from_arg_matches(&matches) {
+        Ok(cli) => Ok(cli),
+        Err(err) => {
+            let _ = err.print();
+            Err(ExitCode::from(EXIT_USAGE))
+        }
+    }
+}
+
+fn configure_command_colors(mut cmd: clap::Command) -> clap::Command {
+    let no_color = std::env::var_os("NO_COLOR").is_some();
+    let stdout_is_tty = std::io::stdout().is_terminal();
+    let stderr_is_tty = std::io::stderr().is_terminal();
+
+    if no_color || !(stdout_is_tty && stderr_is_tty) {
+        cmd = cmd.color(ColorChoice::Never);
+    }
+
+    cmd
 }
 
 struct OutputMode {
@@ -268,8 +316,59 @@ fn print_value(
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("Error: {error}");
-            ExitCode::FAILURE
+            ExitCode::from(EXIT_IO)
         }
+    }
+}
+
+fn exit_code_for_config_error(error: &config::ConfigError) -> ExitCode {
+    use config::ConfigError::*;
+
+    match error {
+        ConfigDirUnavailable | Io(_) => ExitCode::from(EXIT_IO),
+        MissingProfile(_) | InvalidProfile(_) => ExitCode::from(EXIT_USAGE),
+        Parse(_) | Serialize(_) | UnsupportedSchemaVersion(_) => ExitCode::from(EXIT_SOFTWARE),
+    }
+}
+
+fn exit_code_for_password_error(error: &password::GenerationError) -> ExitCode {
+    use password::GenerationError::*;
+
+    match error {
+        EmptyClass(_)
+        | EmptyPool
+        | LengthTooShort { .. }
+        | NoClassesEnabled
+        | MinimumRequiresDisabledClass(_) => ExitCode::from(EXIT_USAGE),
+    }
+}
+
+fn exit_code_for_passphrase_error(error: &passphrase::PassphraseError) -> ExitCode {
+    use passphrase::PassphraseError::*;
+
+    match error {
+        WordCountZero => ExitCode::from(EXIT_USAGE),
+        Io { .. } => ExitCode::from(EXIT_IO),
+        EmptyWordList { .. } => ExitCode::from(EXIT_SOFTWARE),
+    }
+}
+
+fn exit_code_for_token_error(error: &token::TokenError) -> ExitCode {
+    use token::TokenError::*;
+
+    match error {
+        ByteLengthZero => ExitCode::from(EXIT_USAGE),
+        SampleBytesFailed => ExitCode::from(EXIT_IO),
+    }
+}
+
+fn exit_code_for_entropy_error(error: &entropy::EntropyError) -> ExitCode {
+    use entropy::EntropyError::*;
+
+    match error {
+        Io(_) => ExitCode::from(EXIT_IO),
+        InvalidUtf8 => ExitCode::from(EXIT_USAGE),
+        Serialization(_) | Strength(_) => ExitCode::from(EXIT_SOFTWARE),
     }
 }
 

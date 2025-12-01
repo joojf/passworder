@@ -46,47 +46,77 @@ fn passphrase_missing_wordlist_fails() {
         std::process::id()
     );
 
-    Command::cargo_bin("passworder")
+    let output = Command::cargo_bin("passworder")
         .expect("binary exists")
         .args(["passphrase", "--wordlist", &path])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("Error: failed to read word list"));
+        .output()
+        .expect("passphrase output");
+
+    assert_eq!(output.status.code(), Some(2), "IO errors use code 2");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Error: failed to read word list"));
 }
 
 #[test]
 fn token_zero_bytes_fails() {
-    Command::cargo_bin("passworder")
+    let output = Command::cargo_bin("passworder")
         .expect("binary exists")
         .args(["token", "hex", "--bytes", "0"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains(
-            "Error: byte length must be greater than zero",
-        ));
+        .output()
+        .expect("token output");
+
+    assert_eq!(output.status.code(), Some(64), "usage errors use code 64");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Error: byte length must be greater than zero"));
 }
 
 #[test]
 fn token_invalid_number_fails() {
-    Command::cargo_bin("passworder")
+    let output = Command::cargo_bin("passworder")
         .expect("binary exists")
         .args(["token", "hex", "--bytes", "abc"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("invalid digit found in string"));
+        .output()
+        .expect("token output");
+
+    assert_eq!(output.status.code(), Some(64), "clap usage errors use code 64");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid digit found in string"));
 }
 
 #[test]
 fn entropy_stdin_invalid_utf8_fails() {
-    Command::cargo_bin("passworder")
+    let output = Command::cargo_bin("passworder")
         .expect("binary exists")
         .arg("entropy")
         .write_stdin(vec![0xf0, 0x28, 0x8c, 0x28])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains(
-            "Error: STDIN contains invalid UTF-8 data",
-        ));
+        .output()
+        .expect("entropy output");
+
+    assert_eq!(
+        output.status.code(),
+        Some(64),
+        "invalid UTF-8 input is treated as usage"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Error: STDIN contains invalid UTF-8 data"));
+}
+
+#[test]
+fn help_and_errors_avoid_ansi_in_pipes() {
+    // Non-TTY by default in tests; also force NO_COLOR.
+    let output = Command::cargo_bin("passworder")
+        .expect("binary exists")
+        .env("NO_COLOR", "1")
+        .arg("--does-not-exist")
+        .output()
+        .expect("output");
+
+    assert_eq!(output.status.code(), Some(64));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("\u{1b}["),
+        "stderr should not contain ANSI escape sequences"
+    );
 }
 
 #[test]

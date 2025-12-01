@@ -136,6 +136,24 @@ Without the feature, the command falls back to the original Shannon estimate so 
 
 [^zxcvbn]: zxcvbn exposes the strength fields documented in `result.guesses_log10`, `result.score`, and `result.crack_times_display` ([source](https://github.com/dropbox/zxcvbn/blob/master/README.md)).
 
+## Exit Codes & TTY Behavior
+
+`passworder` is intended to be script-friendly. Exit codes are stable across releases:
+
+| Code | Meaning                    | Examples                                                                 |
+|------|----------------------------|--------------------------------------------------------------------------|
+| 0    | Success                    | Normal generation, profile commands that succeed.                        |
+| 1    | Internal / software error  | Unexpected failures (serialization, strength estimator, config schema).  |
+| 2    | IO / OS error              | Config file IO, wordlist file IO, RNG failure, clipboard access errors.  |
+| 64   | Usage error (`EX_USAGE`)   | Invalid CLI flags, impossible password policies, zero-length settings, invalid UTF-8 on STDIN, unknown profiles. |
+
+Argument parsing errors (reported by `clap`) use code `64`. Module-specific errors are mapped into the same table so that future `anyhow`-based code paths can downcast to the underlying error type and reuse these categories.
+
+ANSI styling is only enabled when both STDOUT and STDERR are attached to a TTY and `NO_COLOR` is not set. In practice this means:
+
+- Piped usage/errors (`passworder ... 2>&1 | ...`) are always plain text.
+- Setting `NO_COLOR=1` disables all ANSI styling even in interactive terminals.
+
 ## Development
 
 - Rust 1.76+ (2024 edition)
