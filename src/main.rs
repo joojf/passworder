@@ -7,6 +7,7 @@ mod token;
 mod version;
 
 use clap::{CommandFactory, Parser};
+use serde_json::json;
 use std::process::ExitCode;
 
 #[cfg(any(debug_assertions, feature = "dev-seed"))]
@@ -18,6 +19,10 @@ fn emit_dev_seed_warning(seed: u64) {
 fn main() -> ExitCode {
     let cli = cli::Cli::parse();
     let copy_requested = cli.copy;
+    let output_mode = OutputMode {
+        json: cli.json,
+        quiet: cli.quiet,
+    };
 
     #[cfg(any(debug_assertions, feature = "dev-seed"))]
     let dev_seed = cli.dev_seed;
@@ -45,7 +50,16 @@ fn main() -> ExitCode {
             args.options.apply_to_config(&mut config);
 
             match password::generate(config, dev_seed) {
-                Ok(password) => print_and_copy(password, copy_requested),
+                Ok(password) => print_value(
+                    password,
+                    json!({
+                        "kind": "password",
+                        "profile": args.profile,
+                        "config": config,
+                    }),
+                    &output_mode,
+                    copy_requested,
+                ),
                 Err(error) => {
                     eprintln!("Error: {error}");
                     ExitCode::FAILURE
@@ -58,7 +72,17 @@ fn main() -> ExitCode {
                 save_args.options.apply_to_config(&mut profile);
                 match config::save_profile(&save_args.name, profile) {
                     Ok(()) => {
-                        println!("Saved profile '{}'", save_args.name);
+                        if !output_mode.quiet && !output_mode.json {
+                            println!("Saved profile '{}'", save_args.name);
+                        } else if output_mode.json {
+                            let payload = json!({
+                                "value": save_args.name,
+                                "meta": {
+                                    "kind": "profile-save",
+                                }
+                            });
+                            println!("{payload}");
+                        }
                         ExitCode::SUCCESS
                     }
                     Err(error) => {
@@ -69,23 +93,34 @@ fn main() -> ExitCode {
             }
             cli::ProfileCommands::List => match config::list_profiles() {
                 Ok(profiles) => {
-                    if profiles.is_empty() {
-                        println!("No profiles saved.");
-                    } else {
-                        for (name, profile) in profiles {
-                            println!(
-                                "{name}: length={} lowercase={} min_lower={} uppercase={} min_upper={} digits={} min_digit={} symbols={} min_symbol={} allow_ambiguous={}",
-                                profile.length,
-                                profile.include_lowercase,
-                                profile.min_lowercase,
-                                profile.include_uppercase,
-                                profile.min_uppercase,
-                                profile.include_digits,
-                                profile.min_digits,
-                                profile.include_symbols,
-                                profile.min_symbols,
-                                profile.allow_ambiguous
-                            );
+                    if output_mode.json {
+                        let payload = json!({
+                            "value": profiles.iter().map(|(name, _)| name).collect::<Vec<_>>(),
+                            "meta": {
+                                "kind": "profile-list",
+                                "profiles": profiles,
+                            }
+                        });
+                        println!("{payload}");
+                    } else if !output_mode.quiet {
+                        if profiles.is_empty() {
+                            println!("No profiles saved.");
+                        } else {
+                            for (name, profile) in profiles {
+                                println!(
+                                    "{name}: length={} lowercase={} min_lower={} uppercase={} min_upper={} digits={} min_digit={} symbols={} min_symbol={} allow_ambiguous={}",
+                                    profile.length,
+                                    profile.include_lowercase,
+                                    profile.min_lowercase,
+                                    profile.include_uppercase,
+                                    profile.min_uppercase,
+                                    profile.include_digits,
+                                    profile.min_digits,
+                                    profile.include_symbols,
+                                    profile.min_symbols,
+                                    profile.allow_ambiguous
+                                );
+                            }
                         }
                     }
                     ExitCode::SUCCESS
@@ -98,7 +133,17 @@ fn main() -> ExitCode {
             cli::ProfileCommands::Rm(remove_args) => {
                 match config::remove_profile(&remove_args.name) {
                     Ok(()) => {
-                        println!("Removed profile '{}'", remove_args.name);
+                        if !output_mode.quiet && !output_mode.json {
+                            println!("Removed profile '{}'", remove_args.name);
+                        } else if output_mode.json {
+                            let payload = json!({
+                                "value": remove_args.name,
+                                "meta": {
+                                    "kind": "profile-rm",
+                                }
+                            });
+                            println!("{payload}");
+                        }
                         ExitCode::SUCCESS
                     }
                     Err(error) => {
@@ -116,8 +161,23 @@ fn main() -> ExitCode {
                 wordlist: args.wordlist.clone(),
             };
 
+            let meta = json!({
+                "kind": "passphrase",
+                "config": {
+                    "word_count": config.word_count,
+                    "separator": config.separator,
+                    "title_case": config.title_case,
+                    "wordlist": config.wordlist.as_ref().map(|p| p.display().to_string()),
+                }
+            });
+
             match passphrase::generate(config, dev_seed) {
-                Ok(phrase) => print_and_copy(phrase, copy_requested),
+                Ok(phrase) => print_value(
+                    phrase,
+                    meta,
+                    &output_mode,
+                    copy_requested,
+                ),
                 Err(error) => {
                     eprintln!("Error: {error}");
                     ExitCode::FAILURE
@@ -125,7 +185,14 @@ fn main() -> ExitCode {
             }
         }
         Some(cli::Commands::Token(token_args)) => match token::handle(token_args.command, dev_seed) {
-            Ok(output) => print_and_copy(output, copy_requested),
+            Ok(output) => print_value(
+                output,
+                json!({
+                    "kind": "token",
+                }),
+                &output_mode,
+                copy_requested,
+            ),
             Err(error) => {
                 eprintln!("Error: {error}");
                 ExitCode::FAILURE
@@ -134,7 +201,33 @@ fn main() -> ExitCode {
         Some(cli::Commands::Entropy(args)) => {
             let config = entropy::EntropyConfig { input: args.input };
             match entropy::analyze(config) {
-                Ok(report) => print_and_copy(report, copy_requested),
+                Ok(report) => {
+                    if output_mode.json {
+                        let meta_report = serde_json::from_str(&report).unwrap_or_else(|_| {
+                            json!({
+                                "raw": report,
+                            })
+                        });
+                        print_value(
+                            report.clone(),
+                            json!({
+                                "kind": "entropy",
+                                "report": meta_report,
+                            }),
+                            &output_mode,
+                            copy_requested,
+                        )
+                    } else {
+                        print_value(
+                            report,
+                            json!({
+                                "kind": "entropy",
+                            }),
+                            &output_mode,
+                            copy_requested,
+                        )
+                    }
+                }
                 Err(error) => {
                     eprintln!("Error: {error}");
                     ExitCode::FAILURE
@@ -150,9 +243,28 @@ fn main() -> ExitCode {
     }
 }
 
-fn print_and_copy(output: String, copy_requested: bool) -> ExitCode {
-    println!("{output}");
-    match maybe_copy(&output, copy_requested) {
+struct OutputMode {
+    json: bool,
+    quiet: bool,
+}
+
+fn print_value(
+    value: String,
+    meta: serde_json::Value,
+    output_mode: &OutputMode,
+    copy_requested: bool,
+) -> ExitCode {
+    if output_mode.json {
+        let payload = json!({
+            "value": value,
+            "meta": meta,
+        });
+        println!("{payload}");
+    } else {
+        println!("{value}");
+    }
+
+    match maybe_copy(&value, copy_requested) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("Error: {error}");

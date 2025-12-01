@@ -17,6 +17,21 @@ pub struct Cli {
     )]
     pub copy: bool,
 
+    #[arg(
+        long,
+        global = true,
+        help = "Emit machine-readable JSON: { \"value\": ..., \"meta\": { ... } }."
+    )]
+    pub json: bool,
+
+    #[arg(
+        long,
+        global = true,
+        conflicts_with = "json",
+        help = "Print only the generated value without extra formatting."
+    )]
+    pub quiet: bool,
+
     #[cfg(any(debug_assertions, feature = "dev-seed"))]
     #[arg(
         long = "dev-seed",

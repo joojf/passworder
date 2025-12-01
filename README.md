@@ -31,6 +31,26 @@ Example enforcing uppercase-only passwords with custom length:
 cargo run -- password --length 32 --lowercase=false --no-digits --no-symbols
 ```
 
+### Output Modes
+
+By default commands print the primary value to STDOUT (for example, the generated password or token) followed by a newline.
+
+- `--json`: wraps the value in a stable JSON envelope:  
+  `{ "value": "<string>", "meta": { ... } }`
+- `--quiet`: prints only the generated value on STDOUT, without extra messages. This is most useful with profile commands or when combined with `--copy`.
+
+Examples:
+
+```bash
+cargo run -- password --json
+# => {"value":"s3cr3t...","meta":{"kind":"password","profile":null,"config":{...}}}
+
+cargo run -- entropy --input "abc" --json
+# => {"value":"{\"length\":3,...}","meta":{"kind":"entropy","report":{"length":3,"shannon_bits_estimate":...}}}
+```
+
+The `meta.kind` field identifies the command (`"password"`, `"passphrase"`, `"token"`, `"entropy"`, `"profile-save"`, `"profile-list"`, `"profile-rm"`), and additional metadata fields are stable for a given kind (for example, password `config` matches the `PasswordConfig` structure in `src/password.rs`).
+
 ### Clipboard Copy
 
 Build with the optional clipboard feature to mirror output to your system clipboard:
