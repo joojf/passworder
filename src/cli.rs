@@ -7,7 +7,7 @@ use std::path::PathBuf;
     version = crate::version::SHORT,
     long_version = crate::version::LONG,
     about = "A Rust-first password generator CLI for developers.",
-    long_about = "A Rust-first password generator CLI for developers. Functionality is coming soon."
+    long_about = "A Rust-first password generator CLI for developers.\n\nSecurity note: the current generator prints values to STDOUT by default; treat output as sensitive.\nPlanned vault commands will default to redacting secrets unless explicitly revealed (e.g. via --copy / --reveal)."
 )]
 pub struct Cli {
     #[arg(
