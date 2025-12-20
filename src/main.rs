@@ -4,6 +4,7 @@ mod entropy;
 mod passphrase;
 mod password;
 mod token;
+mod vault;
 mod version;
 
 use clap::{error::ErrorKind as ClapErrorKind, ColorChoice, CommandFactory, FromArgMatches};
