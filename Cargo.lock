@@ -956,6 +956,7 @@ dependencies = [
  "clap",
  "dirs",
  "hkdf",
+ "libc",
  "predicates",
  "rand",
  "secrecy",
