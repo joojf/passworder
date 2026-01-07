@@ -61,6 +61,54 @@ pub enum Commands {
         about = "Manage reusable password profiles."
     )]
     Profile(ProfileArgs),
+    #[command(subcommand_required = true, about = "Manage a local encrypted vault.")]
+    Vault(VaultArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct VaultArgs {
+    #[command(subcommand)]
+    pub command: VaultCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum VaultCommands {
+    #[command(about = "Initialize a new vault file (prompts for master password).")]
+    Init(VaultInitArgs),
+    #[command(about = "Show vault status (missing/locked).")]
+    Status(VaultStatusArgs),
+    #[command(about = "Print the vault path.")]
+    Path(VaultPathArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct VaultInitArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Override the vault path (defaults to ~/Library/Application Support/passworder/vault.pwder)."
+    )]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct VaultStatusArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Override the vault path (defaults to ~/Library/Application Support/passworder/vault.pwder)."
+    )]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct VaultPathArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Override the vault path (defaults to ~/Library/Application Support/passworder/vault.pwder)."
+    )]
+    pub path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]

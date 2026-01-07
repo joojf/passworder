@@ -243,6 +243,87 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Some(cli::Commands::Vault(vault_args)) => match vault_args.command {
+            cli::VaultCommands::Path(args) => {
+                let path = match vault::vault_path(args.path.as_deref()) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_error(&error);
+                    }
+                };
+
+                print_value(
+                    path.display().to_string(),
+                    json!({
+                        "kind": "vault-path",
+                        "path": path.display().to_string(),
+                    }),
+                    &output_mode,
+                    copy_requested,
+                )
+            }
+            cli::VaultCommands::Status(args) => {
+                let path = match vault::vault_path(args.path.as_deref()) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_error(&error);
+                    }
+                };
+
+                match vault::vault_status_v1(&path) {
+                    Ok((status, version)) => print_value(
+                        status.as_str().to_string(),
+                        json!({
+                            "kind": "vault-status",
+                            "path": path.display().to_string(),
+                            "status": status.as_str(),
+                            "version": version,
+                        }),
+                        &output_mode,
+                        copy_requested,
+                    ),
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        exit_code_for_vault_error(&error)
+                    }
+                }
+            }
+            cli::VaultCommands::Init(args) => {
+                let path = match vault::vault_path(args.path.as_deref()) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_error(&error);
+                    }
+                };
+
+                let master_password = match vault::prompt_new_master_password() {
+                    Ok(pw) => pw,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_prompt_error(&error);
+                    }
+                };
+
+                match vault::vault_init_v1(&path, &master_password) {
+                    Ok(()) => print_value(
+                        path.display().to_string(),
+                        json!({
+                            "kind": "vault-init",
+                            "path": path.display().to_string(),
+                        }),
+                        &output_mode,
+                        copy_requested,
+                    ),
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        exit_code_for_vault_error(&error)
+                    }
+                }
+            }
+        },
         None => {
             // No subcommand provided; show help and exit with usage code.
             let mut cmd = configure_command_colors(cli::Cli::command());
@@ -254,7 +335,7 @@ fn main() -> ExitCode {
 }
 
 fn parse_cli() -> Result<cli::Cli, ExitCode> {
-    let mut cmd = configure_command_colors(cli::Cli::command());
+    let cmd = configure_command_colors(cli::Cli::command());
 
     let matches = match cmd.try_get_matches() {
         Ok(matches) => matches,
@@ -370,6 +451,25 @@ fn exit_code_for_entropy_error(error: &entropy::EntropyError) -> ExitCode {
         Io(_) => ExitCode::from(EXIT_IO),
         InvalidUtf8 => ExitCode::from(EXIT_USAGE),
         Serialization(_) | Strength(_) => ExitCode::from(EXIT_SOFTWARE),
+    }
+}
+
+fn exit_code_for_vault_prompt_error(error: &vault::PromptError) -> ExitCode {
+    use vault::PromptError::*;
+
+    match error {
+        Io(_) => ExitCode::from(EXIT_IO),
+        Empty | Mismatch => ExitCode::from(EXIT_USAGE),
+    }
+}
+
+fn exit_code_for_vault_error(error: &vault::VaultError) -> ExitCode {
+    use vault::VaultError::*;
+
+    match error {
+        VaultDirUnavailable | Io(_) => ExitCode::from(EXIT_IO),
+        AlreadyExists(_) | Prompt(_) => ExitCode::from(EXIT_USAGE),
+        Crypto(_) | Format(_) | Json(_) => ExitCode::from(EXIT_SOFTWARE),
     }
 }
 
