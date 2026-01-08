@@ -245,7 +245,7 @@ fn main() -> ExitCode {
         }
         Some(cli::Commands::Vault(vault_args)) => match vault_args.command {
             cli::VaultCommands::Path(args) => {
-                let path = match vault::vault_path(args.path.as_deref()) {
+                let path = match vault::vault_path(args.path.path.as_deref()) {
                     Ok(path) => path,
                     Err(error) => {
                         eprintln!("Error: {error}");
@@ -264,7 +264,7 @@ fn main() -> ExitCode {
                 )
             }
             cli::VaultCommands::Status(args) => {
-                let path = match vault::vault_path(args.path.as_deref()) {
+                let path = match vault::vault_path(args.path.path.as_deref()) {
                     Ok(path) => path,
                     Err(error) => {
                         eprintln!("Error: {error}");
@@ -291,7 +291,7 @@ fn main() -> ExitCode {
                 }
             }
             cli::VaultCommands::Init(args) => {
-                let path = match vault::vault_path(args.path.as_deref()) {
+                let path = match vault::vault_path(args.path.path.as_deref()) {
                     Ok(path) => path,
                     Err(error) => {
                         eprintln!("Error: {error}");
@@ -317,6 +317,315 @@ fn main() -> ExitCode {
                         &output_mode,
                         copy_requested,
                     ),
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        exit_code_for_vault_error(&error)
+                    }
+                }
+            }
+            cli::VaultCommands::Add(args) => {
+                let path = match vault::vault_path(args.path.path.as_deref()) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_error(&error);
+                    }
+                };
+
+                let master_password = match vault::prompt_master_password() {
+                    Ok(pw) => pw,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_prompt_error(&error);
+                    }
+                };
+
+                let secret = match args.secret {
+                    Some(s) => s,
+                    None => match vault::prompt_secret("Secret: ") {
+                        Ok(s) => s,
+                        Err(error) => {
+                            eprintln!("Error: {error}");
+                            return exit_code_for_vault_prompt_error(&error);
+                        }
+                    },
+                };
+
+                let input = vault::AddItemInput {
+                    item_type: args.item_type,
+                    name: args.name,
+                    path: args.item_path,
+                    tags: args.tags,
+                    username: args.username,
+                    secret,
+                    urls: args.urls,
+                    notes: args.notes,
+                };
+
+                match vault::vault_add_item_v1(&path, &master_password, input) {
+                    Ok(id) => {
+                        let value = id.to_string();
+                        let meta = json!({
+                            "kind": "vault-add",
+                            "path": path.display().to_string(),
+                            "id": value,
+                        });
+
+                        if output_mode.quiet {
+                            print_value(value, meta, &output_mode, false)
+                        } else {
+                            print_value(
+                                format!("Added {value}"),
+                                meta,
+                                &output_mode,
+                                false,
+                            )
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        exit_code_for_vault_error(&error)
+                    }
+                }
+            }
+            cli::VaultCommands::Get(args) => {
+                let path = match vault::vault_path(args.path.path.as_deref()) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_error(&error);
+                    }
+                };
+
+                let master_password = match vault::prompt_master_password() {
+                    Ok(pw) => pw,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_prompt_error(&error);
+                    }
+                };
+
+                match vault::vault_get_item_v1(&path, &master_password, args.id) {
+                    Ok(item) => {
+                        let reveal = args.reveal;
+                        let copied = copy_requested;
+
+                        if copied {
+                            if let Err(error) = copy_to_clipboard(&item.secret) {
+                                eprintln!("Error: {error}");
+                                return ExitCode::from(EXIT_IO);
+                            }
+                        }
+
+                        let meta = json!({
+                            "kind": "vault-get",
+                            "path": path.display().to_string(),
+                            "id": item.id.to_string(),
+                            "revealed": reveal,
+                            "copied": copied,
+                            "item": vault_item_json(&item, reveal),
+                        });
+
+                        if output_mode.quiet {
+                            if reveal {
+                                print_value(item.secret, meta, &output_mode, false)
+                            } else {
+                                print_value(item.id.to_string(), meta, &output_mode, false)
+                            }
+                        } else {
+                            print_value(vault_item_text(&item, reveal), meta, &output_mode, false)
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        exit_code_for_vault_error(&error)
+                    }
+                }
+            }
+            cli::VaultCommands::Edit(args) => {
+                let path = match vault::vault_path(args.path.path.as_deref()) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_error(&error);
+                    }
+                };
+
+                let master_password = match vault::prompt_master_password() {
+                    Ok(pw) => pw,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_prompt_error(&error);
+                    }
+                };
+
+                let input = vault::EditItemInput {
+                    id: args.id,
+                    item_type: args.item_type,
+                    name: args.name,
+                    path: args.item_path,
+                    clear_path: args.clear_path,
+                    tags: if args.tags.is_empty() { None } else { Some(args.tags) },
+                    clear_tags: args.clear_tags,
+                    username: args.username,
+                    clear_username: args.clear_username,
+                    secret: args.secret,
+                    urls: if args.urls.is_empty() { None } else { Some(args.urls) },
+                    clear_urls: args.clear_urls,
+                    notes: args.notes,
+                    clear_notes: args.clear_notes,
+                };
+
+                match vault::vault_edit_item_v1(&path, &master_password, input) {
+                    Ok(()) => {
+                        let value = args.id.to_string();
+                        let meta = json!({
+                            "kind": "vault-edit",
+                            "path": path.display().to_string(),
+                            "id": value,
+                        });
+
+                        if output_mode.quiet {
+                            print_value(value, meta, &output_mode, false)
+                        } else {
+                            print_value(format!("Edited {value}"), meta, &output_mode, false)
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        exit_code_for_vault_error(&error)
+                    }
+                }
+            }
+            cli::VaultCommands::Rm(args) => {
+                let path = match vault::vault_path(args.path.path.as_deref()) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_error(&error);
+                    }
+                };
+
+                let master_password = match vault::prompt_master_password() {
+                    Ok(pw) => pw,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_prompt_error(&error);
+                    }
+                };
+
+                match vault::vault_remove_item_v1(&path, &master_password, args.id) {
+                    Ok(()) => {
+                        let value = args.id.to_string();
+                        let meta = json!({
+                            "kind": "vault-rm",
+                            "path": path.display().to_string(),
+                            "id": value,
+                        });
+
+                        if output_mode.quiet {
+                            print_value(value, meta, &output_mode, false)
+                        } else {
+                            print_value(format!("Removed {value}"), meta, &output_mode, false)
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        exit_code_for_vault_error(&error)
+                    }
+                }
+            }
+            cli::VaultCommands::List(args) => {
+                let path = match vault::vault_path(args.path.path.as_deref()) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_error(&error);
+                    }
+                };
+
+                let master_password = match vault::prompt_master_password() {
+                    Ok(pw) => pw,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_prompt_error(&error);
+                    }
+                };
+
+                match vault::vault_list_items_v1(&path, &master_password) {
+                    Ok(items) => {
+                        let value = if output_mode.quiet {
+                            items
+                                .iter()
+                                .map(|i| i.id.to_string())
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        } else {
+                            items
+                                .iter()
+                                .map(vault_item_summary_text)
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        };
+
+                        let meta = json!({
+                            "kind": "vault-list",
+                            "path": path.display().to_string(),
+                            "count": items.len(),
+                            "items": items.iter().map(vault_item_summary_json).collect::<Vec<_>>(),
+                        });
+
+                        print_value(value, meta, &output_mode, false)
+                    }
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        exit_code_for_vault_error(&error)
+                    }
+                }
+            }
+            cli::VaultCommands::Search(args) => {
+                let path = match vault::vault_path(args.path.path.as_deref()) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_error(&error);
+                    }
+                };
+
+                let master_password = match vault::prompt_master_password() {
+                    Ok(pw) => pw,
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_code_for_vault_prompt_error(&error);
+                    }
+                };
+
+                match vault::vault_search_items_v1(&path, &master_password, &args.query) {
+                    Ok(items) => {
+                        let value = if output_mode.quiet {
+                            items
+                                .iter()
+                                .map(|i| i.id.to_string())
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        } else {
+                            items
+                                .iter()
+                                .map(vault_item_summary_text)
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        };
+
+                        let meta = json!({
+                            "kind": "vault-search",
+                            "path": path.display().to_string(),
+                            "query": args.query,
+                            "count": items.len(),
+                            "items": items.iter().map(vault_item_summary_json).collect::<Vec<_>>(),
+                        });
+
+                        print_value(value, meta, &output_mode, false)
+                    }
                     Err(error) => {
                         eprintln!("Error: {error}");
                         exit_code_for_vault_error(&error)
@@ -403,6 +712,100 @@ fn print_value(
     }
 }
 
+fn vault_item_summary_text(item: &vault::VaultItemV1) -> String {
+    let path = item.path.as_deref().unwrap_or("");
+    format!(
+        "{}\t{}\t{}\t{}",
+        item.id,
+        vault_item_type_str(item.item_type),
+        path,
+        item.name
+    )
+}
+
+fn vault_item_summary_json(item: &vault::VaultItemV1) -> serde_json::Value {
+    json!({
+        "id": item.id.to_string(),
+        "type": vault_item_type_str(item.item_type),
+        "name": item.name.as_str(),
+        "path": item.path.as_deref(),
+        "tags": &item.tags,
+        "username": item.username.as_deref(),
+        "urls": &item.urls,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    })
+}
+
+fn vault_item_json(item: &vault::VaultItemV1, reveal: bool) -> serde_json::Value {
+    if reveal {
+        json!({
+            "id": item.id.to_string(),
+            "type": vault_item_type_str(item.item_type),
+            "name": item.name.as_str(),
+            "path": item.path.as_deref(),
+            "tags": &item.tags,
+            "username": item.username.as_deref(),
+            "secret": item.secret.as_str(),
+            "urls": &item.urls,
+            "notes": item.notes.as_deref(),
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+        })
+    } else {
+        json!({
+            "id": item.id.to_string(),
+            "type": vault_item_type_str(item.item_type),
+            "name": item.name.as_str(),
+            "path": item.path.as_deref(),
+            "tags": &item.tags,
+            "username": item.username.as_deref(),
+            "secret_redacted": true,
+            "urls": &item.urls,
+            "notes": item.notes.as_deref(),
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+        })
+    }
+}
+
+fn vault_item_text(item: &vault::VaultItemV1, reveal: bool) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("id:\t{}\n", item.id));
+    out.push_str(&format!("type:\t{}\n", vault_item_type_str(item.item_type)));
+    out.push_str(&format!("name:\t{}\n", item.name));
+    if let Some(path) = &item.path {
+        out.push_str(&format!("path:\t{}\n", path));
+    }
+    if !item.tags.is_empty() {
+        out.push_str(&format!("tags:\t{}\n", item.tags.join(",")));
+    }
+    if let Some(username) = &item.username {
+        out.push_str(&format!("username:\t{}\n", username));
+    }
+    if !item.urls.is_empty() {
+        out.push_str(&format!("urls:\t{}\n", item.urls.join(",")));
+    }
+    if let Some(notes) = &item.notes {
+        out.push_str(&format!("notes:\t{}\n", notes));
+    }
+    out.push_str(&format!(
+        "secret:\t{}\n",
+        if reveal { &item.secret } else { "[REDACTED]" }
+    ));
+    out.push_str(&format!("created_at:\t{}\n", item.created_at));
+    out.push_str(&format!("updated_at:\t{}", item.updated_at));
+    out
+}
+
+fn vault_item_type_str(t: vault::VaultItemType) -> &'static str {
+    match t {
+        vault::VaultItemType::Login => "login",
+        vault::VaultItemType::SecureNote => "secure-note",
+        vault::VaultItemType::ApiToken => "api-token",
+    }
+}
+
 fn exit_code_for_config_error(error: &config::ConfigError) -> ExitCode {
     use config::ConfigError::*;
 
@@ -468,8 +871,12 @@ fn exit_code_for_vault_error(error: &vault::VaultError) -> ExitCode {
 
     match error {
         VaultDirUnavailable | Io(_) => ExitCode::from(EXIT_IO),
-        AlreadyExists(_) | Prompt(_) => ExitCode::from(EXIT_USAGE),
-        Crypto(_) | Format(_) | Json(_) => ExitCode::from(EXIT_SOFTWARE),
+        AlreadyExists(_)
+        | NotInitialized
+        | AuthFailed
+        | ItemNotFound(_)
+        | Prompt(_) => ExitCode::from(EXIT_USAGE),
+        UnsupportedPayloadSchema(_) | Crypto(_) | Format(_) | Json(_) => ExitCode::from(EXIT_SOFTWARE),
     }
 }
 
