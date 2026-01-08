@@ -80,15 +80,25 @@ pub fn lock_path_for_vault(vault_path: &Path) -> PathBuf {
 
 pub fn read_vault_bytes(vault_path: &Path) -> Result<Vec<u8>, VaultIoError> {
     let _lock = VaultLock::acquire(&lock_path_for_vault(vault_path), LockMode::Shared)?;
+    read_vault_bytes_unlocked(vault_path)
+}
 
+pub fn write_vault_bytes_atomic(vault_path: &Path, bytes: &[u8]) -> Result<(), VaultIoError> {
+    let _lock = VaultLock::acquire(&lock_path_for_vault(vault_path), LockMode::Exclusive)?;
+    write_vault_bytes_atomic_unlocked(vault_path, bytes)
+}
+
+pub fn read_vault_bytes_unlocked(vault_path: &Path) -> Result<Vec<u8>, VaultIoError> {
     let mut file = File::open(vault_path)?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)?;
     Ok(buf)
 }
 
-pub fn write_vault_bytes_atomic(vault_path: &Path, bytes: &[u8]) -> Result<(), VaultIoError> {
-    let _lock = VaultLock::acquire(&lock_path_for_vault(vault_path), LockMode::Exclusive)?;
+pub fn write_vault_bytes_atomic_unlocked(
+    vault_path: &Path,
+    bytes: &[u8],
+) -> Result<(), VaultIoError> {
     ensure_parent_dir(vault_path)?;
 
     let dir = vault_path.parent().ok_or(VaultIoError::NoParentDir)?;

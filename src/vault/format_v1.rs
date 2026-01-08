@@ -36,6 +36,15 @@ pub enum VaultFormatError {
 
     #[error("invalid header length")]
     InvalidHeaderLen,
+
+    #[error("invalid tlv encoding")]
+    InvalidTlv,
+
+    #[error("missing required header field: {0}")]
+    MissingField(&'static str),
+
+    #[error("invalid header field: {0}")]
+    InvalidField(&'static str),
 }
 
 pub fn parse_fixed_header(bytes: &[u8]) -> Result<FixedHeader, VaultFormatError> {
@@ -66,6 +75,149 @@ pub struct VaultHeaderV1 {
     pub wrap_nonce: [u8; crypto::XCHACHA_NONCE_LEN],
     pub wrapped_dek: Vec<u8>,
     pub payload_nonce: [u8; crypto::XCHACHA_NONCE_LEN],
+}
+
+pub struct ParsedVaultV1<'a> {
+    pub header_bytes: &'a [u8],
+    pub header: VaultHeaderV1,
+    pub payload_ciphertext: &'a [u8],
+}
+
+pub fn parse_vault_v1(bytes: &[u8]) -> Result<ParsedVaultV1<'_>, VaultFormatError> {
+    let fixed = parse_fixed_header(bytes)?;
+    let header_len = fixed.header_len as usize;
+    let header_bytes = &bytes[..header_len];
+    let tlvs = &bytes[FIXED_HEADER_LEN..header_len];
+    let payload_ciphertext = &bytes[header_len..];
+
+    let mut kdf_params: Option<crypto::KdfParams> = None;
+    let mut kdf_salt: Option<[u8; 16]> = None;
+    let mut kdf_alg_ok = false;
+    let mut aead_alg_ok = false;
+    let mut hkdf_alg_ok = false;
+    let mut wrap_nonce: Option<[u8; crypto::XCHACHA_NONCE_LEN]> = None;
+    let mut wrapped_dek: Option<Vec<u8>> = None;
+    let mut payload_nonce: Option<[u8; crypto::XCHACHA_NONCE_LEN]> = None;
+
+    let mut pos = 0usize;
+    while pos < tlvs.len() {
+        if tlvs.len() - pos < 2 + 4 {
+            return Err(VaultFormatError::InvalidTlv);
+        }
+
+        let typ = u16::from_le_bytes(tlvs[pos..pos + 2].try_into().expect("2 bytes"));
+        let len = u32::from_le_bytes(tlvs[pos + 2..pos + 6].try_into().expect("4 bytes"))
+            as usize;
+        pos += 6;
+        if tlvs.len() - pos < len {
+            return Err(VaultFormatError::InvalidTlv);
+        }
+        let value = &tlvs[pos..pos + len];
+        pos += len;
+
+        match typ {
+            TLV_ARGON2_PARAMS => {
+                if value.len() != 16 {
+                    return Err(VaultFormatError::InvalidField("argon2_params"));
+                }
+                let memory_kib =
+                    u32::from_le_bytes(value[0..4].try_into().expect("4 bytes"));
+                let iterations =
+                    u32::from_le_bytes(value[4..8].try_into().expect("4 bytes"));
+                let parallelism =
+                    u32::from_le_bytes(value[8..12].try_into().expect("4 bytes"));
+                let out_len =
+                    u32::from_le_bytes(value[12..16].try_into().expect("4 bytes"));
+                if out_len as usize != crypto::KDF_OUT_LEN {
+                    return Err(VaultFormatError::InvalidField("argon2_params.out_len"));
+                }
+                kdf_params = Some(crypto::KdfParams {
+                    memory_kib,
+                    iterations,
+                    parallelism,
+                });
+            }
+            TLV_KDF_SALT => {
+                let salt: [u8; 16] = value
+                    .try_into()
+                    .map_err(|_| VaultFormatError::InvalidField("kdf_salt"))?;
+                kdf_salt = Some(salt);
+            }
+            TLV_KDF_ALG => {
+                if value == KDF_ALG_ARGON2ID {
+                    kdf_alg_ok = true;
+                } else {
+                    return Err(VaultFormatError::InvalidField("kdf_alg"));
+                }
+            }
+            TLV_AEAD_ALG => {
+                if value == AEAD_ALG_XCHACHA20POLY1305 {
+                    aead_alg_ok = true;
+                } else {
+                    return Err(VaultFormatError::InvalidField("aead_alg"));
+                }
+            }
+            TLV_HKDF_ALG => {
+                if value == HKDF_ALG_SHA256 {
+                    hkdf_alg_ok = true;
+                } else {
+                    return Err(VaultFormatError::InvalidField("hkdf_alg"));
+                }
+            }
+            TLV_WRAPPED_DEK => {
+                if value.len() < crypto::XCHACHA_NONCE_LEN + 4 {
+                    return Err(VaultFormatError::InvalidField("wrapped_dek"));
+                }
+                let nonce: [u8; crypto::XCHACHA_NONCE_LEN] = value[0..crypto::XCHACHA_NONCE_LEN]
+                    .try_into()
+                    .map_err(|_| VaultFormatError::InvalidField("wrapped_dek.wrap_nonce"))?;
+                let ct_len = u32::from_le_bytes(
+                    value[crypto::XCHACHA_NONCE_LEN..crypto::XCHACHA_NONCE_LEN + 4]
+                        .try_into()
+                        .expect("4 bytes"),
+                ) as usize;
+                let ct = &value[crypto::XCHACHA_NONCE_LEN + 4..];
+                if ct.len() != ct_len {
+                    return Err(VaultFormatError::InvalidField("wrapped_dek.ct_len"));
+                }
+                wrap_nonce = Some(nonce);
+                wrapped_dek = Some(ct.to_vec());
+            }
+            TLV_PAYLOAD_NONCE => {
+                let nonce: [u8; crypto::XCHACHA_NONCE_LEN] = value
+                    .try_into()
+                    .map_err(|_| VaultFormatError::InvalidField("payload_nonce"))?;
+                payload_nonce = Some(nonce);
+            }
+            _ => {
+                // Unknown TLVs are ignored (forward-compatible).
+            }
+        }
+    }
+
+    if !kdf_alg_ok {
+        return Err(VaultFormatError::MissingField("kdf_alg"));
+    }
+    if !aead_alg_ok {
+        return Err(VaultFormatError::MissingField("aead_alg"));
+    }
+    if !hkdf_alg_ok {
+        return Err(VaultFormatError::MissingField("hkdf_alg"));
+    }
+
+    let header = VaultHeaderV1 {
+        kdf_params: kdf_params.ok_or(VaultFormatError::MissingField("argon2_params"))?,
+        kdf_salt: kdf_salt.ok_or(VaultFormatError::MissingField("kdf_salt"))?,
+        wrap_nonce: wrap_nonce.ok_or(VaultFormatError::MissingField("wrapped_dek.wrap_nonce"))?,
+        wrapped_dek: wrapped_dek.ok_or(VaultFormatError::MissingField("wrapped_dek"))?,
+        payload_nonce: payload_nonce.ok_or(VaultFormatError::MissingField("payload_nonce"))?,
+    };
+
+    Ok(ParsedVaultV1 {
+        header_bytes,
+        header,
+        payload_ciphertext,
+    })
 }
 
 pub fn encode_header_v1(h: &VaultHeaderV1) -> Vec<u8> {
