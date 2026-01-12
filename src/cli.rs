@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use crate::vault::VaultItemType;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -65,6 +65,12 @@ pub enum Commands {
     Profile(ProfileArgs),
     #[command(subcommand_required = true, about = "Manage a local encrypted vault.")]
     Vault(VaultArgs),
+    #[command(about = "Emit environment variables from the vault (guarded).")]
+    Env(EnvArgs),
+    #[command(about = "Run a command with environment injected from the vault (guarded).")]
+    Run(RunArgs),
+    #[command(about = "Inject secrets into a template file (guarded).")]
+    Inject(InjectArgs),
 }
 
 #[derive(Debug, Args)]
@@ -103,6 +109,78 @@ pub struct VaultPathOverrideArgs {
         help = "Override the vault path (defaults to ~/Library/Application Support/passworder/vault.pwder)."
     )]
     pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum EnvFormat {
+    Bash,
+    Json,
+}
+
+#[derive(Debug, Args)]
+pub struct EnvArgs {
+    #[arg(long, value_name = "NAME", help = "Profile name (matches vault item `path`).")]
+    pub profile: String,
+
+    #[arg(long, value_name = "FORMAT", value_enum, help = "Output format.")]
+    pub format: EnvFormat,
+
+    #[arg(
+        long = "unsafe",
+        help = "Required to print secrets or write them to disk; acknowledge CI/logging risks."
+    )]
+    pub unsafe_mode: bool,
+
+    #[command(flatten)]
+    pub vault: VaultPathOverrideArgs,
+}
+
+#[derive(Debug, Args)]
+pub struct RunArgs {
+    #[arg(long, value_name = "NAME", help = "Profile name (matches vault item `path`).")]
+    pub profile: String,
+
+    #[arg(
+        long = "unsafe",
+        help = "Allow running in CI / non-interactive contexts where env may be logged."
+    )]
+    pub unsafe_mode: bool,
+
+    #[command(flatten)]
+    pub vault: VaultPathOverrideArgs,
+
+    #[arg(
+        value_name = "CMD",
+        required = true,
+        num_args = 1..,
+        last = true,
+        help = "Command to run (must be after `--`)."
+    )]
+    pub cmd: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct InjectArgs {
+    #[arg(long, value_name = "NAME", help = "Profile name (matches vault item `path`).")]
+    pub profile: String,
+
+    #[arg(long = "in", value_name = "FILE", help = "Template input file.")]
+    pub input: PathBuf,
+
+    #[arg(long = "out", value_name = "FILE", help = "Output file path.")]
+    pub output: PathBuf,
+
+    #[arg(
+        long = "unsafe",
+        help = "Required to print secrets or write them to disk; acknowledge CI/logging risks."
+    )]
+    pub unsafe_mode: bool,
+
+    #[arg(long, help = "Overwrite output file if it already exists.")]
+    pub force: bool,
+
+    #[command(flatten)]
+    pub vault: VaultPathOverrideArgs,
 }
 
 #[derive(Debug, Args)]
