@@ -66,7 +66,10 @@ pub fn parse_fixed_header(bytes: &[u8]) -> Result<FixedHeader, VaultFormatError>
         return Err(VaultFormatError::InvalidHeaderLen);
     }
 
-    Ok(FixedHeader { version, header_len })
+    Ok(FixedHeader {
+        version,
+        header_len,
+    })
 }
 
 pub struct VaultHeaderV1 {
@@ -78,7 +81,6 @@ pub struct VaultHeaderV1 {
 }
 
 pub struct ParsedVaultV1<'a> {
-    pub header_bytes: &'a [u8],
     pub header: VaultHeaderV1,
     pub payload_ciphertext: &'a [u8],
 }
@@ -86,7 +88,6 @@ pub struct ParsedVaultV1<'a> {
 pub fn parse_vault_v1(bytes: &[u8]) -> Result<ParsedVaultV1<'_>, VaultFormatError> {
     let fixed = parse_fixed_header(bytes)?;
     let header_len = fixed.header_len as usize;
-    let header_bytes = &bytes[..header_len];
     let tlvs = &bytes[FIXED_HEADER_LEN..header_len];
     let payload_ciphertext = &bytes[header_len..];
 
@@ -106,8 +107,7 @@ pub fn parse_vault_v1(bytes: &[u8]) -> Result<ParsedVaultV1<'_>, VaultFormatErro
         }
 
         let typ = u16::from_le_bytes(tlvs[pos..pos + 2].try_into().expect("2 bytes"));
-        let len = u32::from_le_bytes(tlvs[pos + 2..pos + 6].try_into().expect("4 bytes"))
-            as usize;
+        let len = u32::from_le_bytes(tlvs[pos + 2..pos + 6].try_into().expect("4 bytes")) as usize;
         pos += 6;
         if tlvs.len() - pos < len {
             return Err(VaultFormatError::InvalidTlv);
@@ -120,14 +120,10 @@ pub fn parse_vault_v1(bytes: &[u8]) -> Result<ParsedVaultV1<'_>, VaultFormatErro
                 if value.len() != 16 {
                     return Err(VaultFormatError::InvalidField("argon2_params"));
                 }
-                let memory_kib =
-                    u32::from_le_bytes(value[0..4].try_into().expect("4 bytes"));
-                let iterations =
-                    u32::from_le_bytes(value[4..8].try_into().expect("4 bytes"));
-                let parallelism =
-                    u32::from_le_bytes(value[8..12].try_into().expect("4 bytes"));
-                let out_len =
-                    u32::from_le_bytes(value[12..16].try_into().expect("4 bytes"));
+                let memory_kib = u32::from_le_bytes(value[0..4].try_into().expect("4 bytes"));
+                let iterations = u32::from_le_bytes(value[4..8].try_into().expect("4 bytes"));
+                let parallelism = u32::from_le_bytes(value[8..12].try_into().expect("4 bytes"));
+                let out_len = u32::from_le_bytes(value[12..16].try_into().expect("4 bytes"));
                 if out_len as usize != crypto::KDF_OUT_LEN {
                     return Err(VaultFormatError::InvalidField("argon2_params.out_len"));
                 }
@@ -214,7 +210,6 @@ pub fn parse_vault_v1(bytes: &[u8]) -> Result<ParsedVaultV1<'_>, VaultFormatErro
     };
 
     Ok(ParsedVaultV1 {
-        header_bytes,
         header,
         payload_ciphertext,
     })

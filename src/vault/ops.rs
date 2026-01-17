@@ -128,7 +128,8 @@ pub fn vault_init_v1(vault_path: &Path, master_password: &SecretString) -> Resul
         "schema_version": 1,
         "items": [],
     }))?;
-    let payload_ciphertext = crypto::encrypt_payload(&dek, &payload_nonce, &aad, &payload_plaintext)?;
+    let payload_ciphertext =
+        crypto::encrypt_payload(&dek, &payload_nonce, &aad, &payload_plaintext)?;
 
     let mut vault_bytes = Vec::with_capacity(header_bytes.len() + payload_ciphertext.len());
     vault_bytes.extend_from_slice(&header_bytes);
@@ -198,7 +199,12 @@ pub fn vault_add_item_v1(
     payload.items.push(item);
     payload.items.sort_by(item_sort_cmp);
 
-    let new_bytes = seal_vault_v1(header.header.kdf_params, header.header.kdf_salt, master_password, &payload)?;
+    let new_bytes = seal_vault_v1(
+        header.header.kdf_params,
+        header.header.kdf_salt,
+        master_password,
+        &payload,
+    )?;
     io::write_vault_bytes_atomic_unlocked(vault_path, &new_bytes)?;
     Ok(id)
 }
@@ -305,7 +311,12 @@ pub fn vault_edit_item_v1(
     item.updated_at = now_unix_seconds();
 
     payload.items.sort_by(item_sort_cmp);
-    let new_bytes = seal_vault_v1(header.header.kdf_params, header.header.kdf_salt, master_password, &payload)?;
+    let new_bytes = seal_vault_v1(
+        header.header.kdf_params,
+        header.header.kdf_salt,
+        master_password,
+        &payload,
+    )?;
     io::write_vault_bytes_atomic_unlocked(vault_path, &new_bytes)?;
     Ok(())
 }
@@ -329,7 +340,12 @@ pub fn vault_remove_item_v1(
         return Err(VaultError::ItemNotFound(id.to_string()));
     }
 
-    let new_bytes = seal_vault_v1(header.header.kdf_params, header.header.kdf_salt, master_password, &payload)?;
+    let new_bytes = seal_vault_v1(
+        header.header.kdf_params,
+        header.header.kdf_salt,
+        master_password,
+        &payload,
+    )?;
     io::write_vault_bytes_atomic_unlocked(vault_path, &new_bytes)?;
     Ok(())
 }
@@ -504,30 +520,26 @@ fn item_matches_query(item: &items::VaultItemV1, q: &str) -> bool {
     if item.name.to_lowercase().contains(q) {
         return true;
     }
-    if let Some(path) = &item.path {
-        if path.to_lowercase().contains(q) {
-            return true;
-        }
+    if let Some(path) = &item.path
+        && path.to_lowercase().contains(q)
+    {
+        return true;
     }
     if item.tags.iter().any(|t| t.contains(q)) {
         return true;
     }
-    if let Some(username) = &item.username {
-        if username.to_lowercase().contains(q) {
-            return true;
-        }
-    }
-    if item
-        .urls
-        .iter()
-        .any(|u| u.to_lowercase().contains(q))
+    if let Some(username) = &item.username
+        && username.to_lowercase().contains(q)
     {
         return true;
     }
-    if let Some(notes) = &item.notes {
-        if notes.to_lowercase().contains(q) {
-            return true;
-        }
+    if item.urls.iter().any(|u| u.to_lowercase().contains(q)) {
+        return true;
+    }
+    if let Some(notes) = &item.notes
+        && notes.to_lowercase().contains(q)
+    {
+        return true;
     }
     false
 }

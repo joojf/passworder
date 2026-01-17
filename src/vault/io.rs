@@ -41,6 +41,7 @@ impl VaultLock {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .mode(0o600)
             .open(lock_path)?;
 
@@ -49,6 +50,7 @@ impl VaultLock {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(lock_path)?;
 
         set_permissions_0600(lock_path)?;
@@ -153,7 +155,7 @@ fn lock_file(file: &File, mode: LockMode) -> Result<(), VaultIoError> {
         if rc == 0 {
             return Ok(());
         }
-        return Err(VaultIoError::LockFailed);
+        Err(VaultIoError::LockFailed)
     }
 
     #[cfg(not(unix))]

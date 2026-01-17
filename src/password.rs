@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 #[cfg(any(debug_assertions, feature = "dev-seed"))]
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 
 pub const AMBIGUOUS_CHARACTERS: &[char] = &['0', 'O', 'o', '1', 'l', 'I', '|'];
 

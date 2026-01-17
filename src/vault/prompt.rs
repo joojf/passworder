@@ -1,6 +1,6 @@
 use secrecy::SecretString;
-use std::io::{self, BufRead, Write};
 use std::io::IsTerminal;
+use std::io::{self, BufRead, Write};
 use thiserror::Error;
 
 #[derive(Debug, Error)]

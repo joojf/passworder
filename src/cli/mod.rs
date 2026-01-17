@@ -1,5 +1,5 @@
-use clap::{Args, Parser, Subcommand, ValueEnum};
 use crate::vault::VaultItemType;
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 use uuid::Uuid;
 #[derive(Debug, Parser)]
@@ -119,7 +119,11 @@ pub enum EnvFormat {
 
 #[derive(Debug, Args)]
 pub struct EnvArgs {
-    #[arg(long, value_name = "NAME", help = "Profile name (matches vault item `path`).")]
+    #[arg(
+        long,
+        value_name = "NAME",
+        help = "Profile name (matches vault item `path`)."
+    )]
     pub profile: String,
 
     #[arg(long, value_name = "FORMAT", value_enum, help = "Output format.")]
@@ -137,7 +141,11 @@ pub struct EnvArgs {
 
 #[derive(Debug, Args)]
 pub struct RunArgs {
-    #[arg(long, value_name = "NAME", help = "Profile name (matches vault item `path`).")]
+    #[arg(
+        long,
+        value_name = "NAME",
+        help = "Profile name (matches vault item `path`)."
+    )]
     pub profile: String,
 
     #[arg(
@@ -161,7 +169,11 @@ pub struct RunArgs {
 
 #[derive(Debug, Args)]
 pub struct InjectArgs {
-    #[arg(long, value_name = "NAME", help = "Profile name (matches vault item `path`).")]
+    #[arg(
+        long,
+        value_name = "NAME",
+        help = "Profile name (matches vault item `path`)."
+    )]
     pub profile: String,
 
     #[arg(long = "in", value_name = "FILE", help = "Template input file.")]
@@ -221,7 +233,11 @@ pub struct VaultAddArgs {
     #[arg(long, value_name = "USERNAME", help = "Optional username.")]
     pub username: Option<String>,
 
-    #[arg(long, value_name = "SECRET", help = "Secret value (avoid using this in shell history when possible).")]
+    #[arg(
+        long,
+        value_name = "SECRET",
+        help = "Secret value (avoid using this in shell history when possible)."
+    )]
     pub secret: Option<String>,
 
     #[arg(long = "url", value_name = "URL", action = clap::ArgAction::Append, help = "Associated URL (repeatable).")]
@@ -239,7 +255,10 @@ pub struct VaultGetArgs {
     #[arg(value_name = "ID", help = "Item id (UUID).")]
     pub id: Uuid,
 
-    #[arg(long, help = "Reveal the secret to STDOUT (unsafe unless you know where output goes).")]
+    #[arg(
+        long,
+        help = "Reveal the secret to STDOUT (unsafe unless you know where output goes)."
+    )]
     pub reveal: bool,
 }
 
@@ -272,7 +291,11 @@ pub struct VaultEditArgs {
     #[arg(long, help = "Clear username.")]
     pub clear_username: bool,
 
-    #[arg(long, value_name = "SECRET", help = "Update secret (avoid shell history).")]
+    #[arg(
+        long,
+        value_name = "SECRET",
+        help = "Update secret (avoid shell history)."
+    )]
     pub secret: Option<String>,
 
     #[arg(long = "url", value_name = "URL", action = clap::ArgAction::Append, help = "Replace URLs (repeatable).")]

@@ -213,11 +213,7 @@ fn backup_config(path: &Path) -> Result<(), ConfigError> {
 pub fn list_profiles() -> Result<Vec<(String, PasswordConfig)>, ConfigError> {
     let path = config_path()?;
     let config = load_config(&path)?;
-    let mut entries: Vec<_> = config
-        .profiles
-        .into_iter()
-        .map(|(name, profile)| (name, profile))
-        .collect();
+    let mut entries: Vec<_> = config.profiles.into_iter().collect();
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(entries)
 }
