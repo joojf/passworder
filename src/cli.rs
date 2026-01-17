@@ -1,5 +1,7 @@
 use clap::{Args, Parser, Subcommand};
+use crate::vault::VaultItemType;
 use std::path::PathBuf;
+use uuid::Uuid;
 #[derive(Debug, Parser)]
 #[command(
     name = "passworder",
@@ -79,36 +81,155 @@ pub enum VaultCommands {
     Status(VaultStatusArgs),
     #[command(about = "Print the vault path.")]
     Path(VaultPathArgs),
+    #[command(about = "Add a new item to the vault.")]
+    Add(VaultAddArgs),
+    #[command(about = "Get an item by id (secrets are redacted unless explicitly revealed).")]
+    Get(VaultGetArgs),
+    #[command(about = "Edit an existing item by id.")]
+    Edit(VaultEditArgs),
+    #[command(about = "Remove an item by id.")]
+    Rm(VaultRmArgs),
+    #[command(about = "List items in the vault (no secrets).")]
+    List(VaultListArgs),
+    #[command(about = "Search items in the vault (no persistent index).")]
+    Search(VaultSearchArgs),
+}
+
+#[derive(Debug, Args, Clone, Default)]
+pub struct VaultPathOverrideArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Override the vault path (defaults to ~/Library/Application Support/passworder/vault.pwder)."
+    )]
+    pub path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
 pub struct VaultInitArgs {
-    #[arg(
-        long,
-        value_name = "PATH",
-        help = "Override the vault path (defaults to ~/Library/Application Support/passworder/vault.pwder)."
-    )]
-    pub path: Option<PathBuf>,
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
 }
 
 #[derive(Debug, Args)]
 pub struct VaultStatusArgs {
-    #[arg(
-        long,
-        value_name = "PATH",
-        help = "Override the vault path (defaults to ~/Library/Application Support/passworder/vault.pwder)."
-    )]
-    pub path: Option<PathBuf>,
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
 }
 
 #[derive(Debug, Args)]
 pub struct VaultPathArgs {
-    #[arg(
-        long,
-        value_name = "PATH",
-        help = "Override the vault path (defaults to ~/Library/Application Support/passworder/vault.pwder)."
-    )]
-    pub path: Option<PathBuf>,
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
+}
+
+#[derive(Debug, Args)]
+pub struct VaultAddArgs {
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
+
+    #[arg(long = "type", value_name = "TYPE", help = "Item type.")]
+    pub item_type: VaultItemType,
+
+    #[arg(long, value_name = "NAME", help = "Item display name.")]
+    pub name: String,
+
+    #[arg(long, value_name = "PATH", help = "Optional folder/path for grouping.")]
+    pub item_path: Option<String>,
+
+    #[arg(long = "tag", value_name = "TAG", action = clap::ArgAction::Append, help = "Tag (repeatable).")]
+    pub tags: Vec<String>,
+
+    #[arg(long, value_name = "USERNAME", help = "Optional username.")]
+    pub username: Option<String>,
+
+    #[arg(long, value_name = "SECRET", help = "Secret value (avoid using this in shell history when possible).")]
+    pub secret: Option<String>,
+
+    #[arg(long = "url", value_name = "URL", action = clap::ArgAction::Append, help = "Associated URL (repeatable).")]
+    pub urls: Vec<String>,
+
+    #[arg(long, value_name = "NOTES", help = "Optional notes.")]
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct VaultGetArgs {
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
+
+    #[arg(value_name = "ID", help = "Item id (UUID).")]
+    pub id: Uuid,
+
+    #[arg(long, help = "Reveal the secret to STDOUT (unsafe unless you know where output goes).")]
+    pub reveal: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct VaultEditArgs {
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
+
+    #[arg(value_name = "ID", help = "Item id (UUID).")]
+    pub id: Uuid,
+
+    #[arg(long = "type", value_name = "TYPE", help = "Update item type.")]
+    pub item_type: Option<VaultItemType>,
+
+    #[arg(long, value_name = "NAME", help = "Update item name.")]
+    pub name: Option<String>,
+
+    #[arg(long, value_name = "PATH", help = "Update item folder/path.")]
+    pub item_path: Option<String>,
+    #[arg(long, help = "Clear folder/path.")]
+    pub clear_path: bool,
+
+    #[arg(long = "tag", value_name = "TAG", action = clap::ArgAction::Append, help = "Replace tags (repeatable).")]
+    pub tags: Vec<String>,
+    #[arg(long, help = "Clear tags.")]
+    pub clear_tags: bool,
+
+    #[arg(long, value_name = "USERNAME", help = "Update username.")]
+    pub username: Option<String>,
+    #[arg(long, help = "Clear username.")]
+    pub clear_username: bool,
+
+    #[arg(long, value_name = "SECRET", help = "Update secret (avoid shell history).")]
+    pub secret: Option<String>,
+
+    #[arg(long = "url", value_name = "URL", action = clap::ArgAction::Append, help = "Replace URLs (repeatable).")]
+    pub urls: Vec<String>,
+    #[arg(long, help = "Clear URLs.")]
+    pub clear_urls: bool,
+
+    #[arg(long, value_name = "NOTES", help = "Update notes.")]
+    pub notes: Option<String>,
+    #[arg(long, help = "Clear notes.")]
+    pub clear_notes: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct VaultRmArgs {
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
+
+    #[arg(value_name = "ID", help = "Item id (UUID).")]
+    pub id: Uuid,
+}
+
+#[derive(Debug, Args)]
+pub struct VaultListArgs {
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
+}
+
+#[derive(Debug, Args)]
+pub struct VaultSearchArgs {
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
+
+    #[arg(value_name = "QUERY", help = "Search query (case-insensitive).")]
+    pub query: String,
 }
 
 #[derive(Debug, Args)]

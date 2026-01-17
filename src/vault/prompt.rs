@@ -8,7 +8,7 @@ pub enum PromptError {
     #[error("io error")]
     Io(#[from] io::Error),
 
-    #[error("master password cannot be empty")]
+    #[error("input cannot be empty")]
     Empty,
 
     #[error("passwords do not match")]
@@ -25,6 +25,22 @@ pub fn prompt_new_master_password() -> Result<SecretString, PromptError> {
         return Err(PromptError::Mismatch);
     }
     Ok(SecretString::new(first.into_boxed_str()))
+}
+
+pub fn prompt_master_password() -> Result<SecretString, PromptError> {
+    let pw = read_secret_line("Master password: ")?;
+    if pw.is_empty() {
+        return Err(PromptError::Empty);
+    }
+    Ok(SecretString::new(pw.into_boxed_str()))
+}
+
+pub fn prompt_secret(label: &str) -> Result<String, PromptError> {
+    let value = read_secret_line(label)?;
+    if value.is_empty() {
+        return Err(PromptError::Empty);
+    }
+    Ok(value)
 }
 
 fn read_secret_line(prompt: &str) -> Result<String, PromptError> {
