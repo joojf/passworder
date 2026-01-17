@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod dev_workflows;
 mod entropy;
 mod passphrase;
 mod password;
@@ -10,6 +11,7 @@ mod version;
 use clap::{error::ErrorKind as ClapErrorKind, ColorChoice, CommandFactory, FromArgMatches};
 use serde_json::json;
 use std::io::IsTerminal;
+use std::process::Stdio;
 use std::process::ExitCode;
 
 const EXIT_USAGE: u8 = 64;
@@ -242,6 +244,197 @@ fn main() -> ExitCode {
                     exit_code_for_entropy_error(&error)
                 }
             }
+        }
+        Some(cli::Commands::Env(args)) => {
+            if output_mode.json || output_mode.quiet || copy_requested {
+                eprintln!("Error: `env` does not support `--json`, `--quiet`, or `--copy`.");
+                return ExitCode::from(EXIT_USAGE);
+            }
+            if !args.unsafe_mode {
+                eprintln!("Error: `env` prints secrets; re-run with `--unsafe` to proceed.");
+                return ExitCode::from(EXIT_USAGE);
+            }
+            if std::env::var_os("CI").is_some() {
+                eprintln!("Warning: CI detected; secret output may be logged.");
+            }
+
+            let vault_path = match vault::vault_path(args.vault.path.as_deref()) {
+                Ok(path) => path,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_code_for_vault_error(&error);
+                }
+            };
+
+            let master_password = match vault::prompt_master_password() {
+                Ok(pw) => pw,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_code_for_vault_prompt_error(&error);
+                }
+            };
+
+            let items = match vault::vault_list_items_v1(&vault_path, &master_password) {
+                Ok(items) => items,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_code_for_vault_error(&error);
+                }
+            };
+            let vars = dev_workflows::env_vars_for_profile(&items, &args.profile);
+            if vars.is_empty() {
+                eprintln!("Warning: profile '{}' has no items.", args.profile);
+            }
+
+            match args.format {
+                cli::EnvFormat::Bash => match dev_workflows::bash_export_lines(&vars) {
+                    Ok(text) => {
+                        print!("{text}");
+                        ExitCode::SUCCESS
+                    }
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        ExitCode::from(EXIT_USAGE)
+                    }
+                },
+                cli::EnvFormat::Json => {
+                    let json = serde_json::to_string(&vars).expect("json serialization");
+                    println!("{json}");
+                    ExitCode::SUCCESS
+                }
+            }
+        }
+        Some(cli::Commands::Run(args)) => {
+            if output_mode.json || output_mode.quiet || copy_requested {
+                eprintln!("Error: `run` does not support `--json`, `--quiet`, or `--copy`.");
+                return ExitCode::from(EXIT_USAGE);
+            }
+            if std::env::var_os("CI").is_some() && !args.unsafe_mode {
+                eprintln!("Error: refusing to run in CI without `--unsafe` (env may be logged).");
+                return ExitCode::from(EXIT_USAGE);
+            }
+
+            let vault_path = match vault::vault_path(args.vault.path.as_deref()) {
+                Ok(path) => path,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_code_for_vault_error(&error);
+                }
+            };
+
+            let master_password = match vault::prompt_master_password() {
+                Ok(pw) => pw,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_code_for_vault_prompt_error(&error);
+                }
+            };
+
+            let items = match vault::vault_list_items_v1(&vault_path, &master_password) {
+                Ok(items) => items,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_code_for_vault_error(&error);
+                }
+            };
+            let vars = dev_workflows::env_vars_for_profile(&items, &args.profile);
+            if vars.is_empty() {
+                eprintln!("Warning: profile '{}' has no items.", args.profile);
+            } else {
+                eprintln!("Warning: running with {} injected env vars.", vars.len());
+            }
+
+            let program = &args.cmd[0];
+            let mut cmd = std::process::Command::new(program);
+            cmd.args(&args.cmd[1..]);
+            cmd.envs(vars);
+            cmd.stdin(Stdio::inherit());
+            cmd.stdout(Stdio::inherit());
+            cmd.stderr(Stdio::inherit());
+
+            match cmd.status() {
+                Ok(status) => match status.code() {
+                    Some(code) if (0..=255).contains(&code) => ExitCode::from(code as u8),
+                    Some(_) => ExitCode::from(1),
+                    None => ExitCode::from(1),
+                },
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    ExitCode::from(EXIT_IO)
+                }
+            }
+        }
+        Some(cli::Commands::Inject(args)) => {
+            if output_mode.json || output_mode.quiet || copy_requested {
+                eprintln!("Error: `inject` does not support `--json`, `--quiet`, or `--copy`.");
+                return ExitCode::from(EXIT_USAGE);
+            }
+            if !args.unsafe_mode {
+                eprintln!("Error: `inject` writes secrets to disk; re-run with `--unsafe` to proceed.");
+                return ExitCode::from(EXIT_USAGE);
+            }
+            if std::env::var_os("CI").is_some() {
+                eprintln!("Warning: CI detected; secret output files may be archived or logged.");
+            }
+            if args.output.exists() && !args.force {
+                eprintln!(
+                    "Error: output file already exists: {} (use `--force` to overwrite).",
+                    args.output.display()
+                );
+                return ExitCode::from(EXIT_USAGE);
+            }
+
+            let vault_path = match vault::vault_path(args.vault.path.as_deref()) {
+                Ok(path) => path,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_code_for_vault_error(&error);
+                }
+            };
+
+            let master_password = match vault::prompt_master_password() {
+                Ok(pw) => pw,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_code_for_vault_prompt_error(&error);
+                }
+            };
+
+            let items = match vault::vault_list_items_v1(&vault_path, &master_password) {
+                Ok(items) => items,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_code_for_vault_error(&error);
+                }
+            };
+            let vars = dev_workflows::env_vars_for_profile(&items, &args.profile);
+            if vars.is_empty() {
+                eprintln!("Warning: profile '{}' has no items.", args.profile);
+            }
+
+            let template = match std::fs::read_to_string(&args.input) {
+                Ok(s) => s,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return ExitCode::from(EXIT_IO);
+                }
+            };
+
+            let rendered = match dev_workflows::render_template(&template, &vars) {
+                Ok(s) => s,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return ExitCode::from(EXIT_USAGE);
+                }
+            };
+
+            if let Err(error) = dev_workflows::write_sensitive_file_atomic(&args.output, rendered.as_bytes()) {
+                eprintln!("Error: {error}");
+                return ExitCode::from(EXIT_IO);
+            }
+
+            println!("{}", args.output.display());
+            ExitCode::SUCCESS
         }
         Some(cli::Commands::Vault(vault_args)) => match vault_args.command {
             cli::VaultCommands::Path(args) => {
