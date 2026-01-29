@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
 #[cfg(any(debug_assertions, feature = "dev-seed"))]
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 
 const BUILTIN_WORDS: &[&str] = &[
     "anchor", "binary", "cobalt", "delta", "ember", "flux", "gamma", "harbor", "ion", "jolt",
@@ -162,10 +162,6 @@ fn load_words(
 
         Ok((words, Some(path)))
     } else {
-        if BUILTIN_WORDS.is_empty() {
-            return Err(PassphraseError::EmptyWordList { path: None });
-        }
-
         Ok((
             BUILTIN_WORDS
                 .iter()

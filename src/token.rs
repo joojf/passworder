@@ -7,7 +7,7 @@ use std::fmt;
 use uuid::Uuid;
 
 #[cfg(any(debug_assertions, feature = "dev-seed"))]
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 
 #[derive(Debug)]
 pub enum TokenError {

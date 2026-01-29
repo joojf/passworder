@@ -48,7 +48,7 @@ impl Default for VaultPayloadV1 {
 }
 
 pub mod uuid_as_string {
-    use serde::{de, Deserialize, Deserializer, Serializer};
+    use serde::{Deserialize, Deserializer, Serializer, de};
     use uuid::Uuid;
 
     pub fn serialize<S>(uuid: &Uuid, serializer: S) -> Result<S::Ok, S::Error>

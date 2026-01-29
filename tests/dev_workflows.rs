@@ -69,14 +69,7 @@ fn env_outputs_bash_and_json_and_is_guarded() {
     let bash = Command::cargo_bin("passworder")
         .expect("binary exists")
         .env("HOME", home.path())
-        .args([
-            "env",
-            "--profile",
-            "dev",
-            "--format",
-            "bash",
-            "--unsafe",
-        ])
+        .args(["env", "--profile", "dev", "--format", "bash", "--unsafe"])
         .write_stdin("pw\n")
         .output()
         .expect("env bash output");
@@ -88,14 +81,7 @@ fn env_outputs_bash_and_json_and_is_guarded() {
     let json = Command::cargo_bin("passworder")
         .expect("binary exists")
         .env("HOME", home.path())
-        .args([
-            "env",
-            "--profile",
-            "dev",
-            "--format",
-            "json",
-            "--unsafe",
-        ])
+        .args(["env", "--profile", "dev", "--format", "json", "--unsafe"])
         .write_stdin("pw\n")
         .output()
         .expect("env json output");
@@ -195,4 +181,3 @@ fn run_injects_env_and_inject_substitutes_template() {
         assert_eq!(mode, 0o600);
     }
 }
-

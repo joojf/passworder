@@ -26,8 +26,8 @@ use argon2::{Algorithm, Argon2, Params as Argon2Params, Version};
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use hkdf::Hkdf;
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 use secrecy::{ExposeSecret, SecretSlice, SecretString};
 use sha2::Sha256;
 use thiserror::Error;
@@ -156,7 +156,8 @@ pub fn derive_kek(kdf_out: &SecretBytes) -> Result<SecretBytes, CryptoError> {
     let hk = Hkdf::<Sha256>::new(None, kdf_out.expose_secret());
 
     let mut kek = vec![0u8; 32];
-    hk.expand(HKDF_INFO_KEK, &mut kek).map_err(|_| CryptoError::Hkdf)?;
+    hk.expand(HKDF_INFO_KEK, &mut kek)
+        .map_err(|_| CryptoError::Hkdf)?;
     Ok(SecretBytes::from(kek))
 }
 
@@ -222,7 +223,10 @@ pub fn encrypt_payload(
     cipher
         .encrypt(
             XNonce::from_slice(payload_nonce),
-            Payload { msg: plaintext, aad },
+            Payload {
+                msg: plaintext,
+                aad,
+            },
         )
         .map_err(|_| CryptoError::Aead)
 }

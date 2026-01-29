@@ -78,7 +78,11 @@ fn token_invalid_number_fails() {
         .output()
         .expect("token output");
 
-    assert_eq!(output.status.code(), Some(64), "clap usage errors use code 64");
+    assert_eq!(
+        output.status.code(),
+        Some(64),
+        "clap usage errors use code 64"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("invalid digit found in string"));
 }

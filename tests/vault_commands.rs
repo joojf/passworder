@@ -50,10 +50,7 @@ fn vault_init_creates_vault_and_status_is_locked() {
     assert!(status_before.status.success());
     let stdout = String::from_utf8_lossy(&status_before.stdout);
     let json: Value = serde_json::from_str(&stdout).expect("valid json");
-    assert_eq!(
-        json.get("value").and_then(Value::as_str),
-        Some("missing")
-    );
+    assert_eq!(json.get("value").and_then(Value::as_str), Some("missing"));
 
     let init = Command::cargo_bin("passworder")
         .expect("binary exists")
@@ -80,10 +77,7 @@ fn vault_init_creates_vault_and_status_is_locked() {
     assert!(status_after.status.success());
     let stdout = String::from_utf8_lossy(&status_after.stdout);
     let json: Value = serde_json::from_str(&stdout).expect("valid json");
-    assert_eq!(
-        json.get("value").and_then(Value::as_str),
-        Some("locked")
-    );
+    assert_eq!(json.get("value").and_then(Value::as_str), Some("locked"));
 }
 
 #[test]
@@ -148,10 +142,7 @@ fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
         .and_then(Value::as_array)
         .expect("meta.items array");
     assert_eq!(items.len(), 1);
-    assert_eq!(
-        items[0].get("id").and_then(Value::as_str),
-        Some(id)
-    );
+    assert_eq!(items[0].get("id").and_then(Value::as_str), Some(id));
 
     let get = Command::cargo_bin("passworder")
         .expect("binary exists")
@@ -167,7 +158,10 @@ fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
         .get("meta")
         .and_then(|m| m.get("item"))
         .expect("meta.item");
-    assert_eq!(item.get("secret_redacted").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        item.get("secret_redacted").and_then(Value::as_bool),
+        Some(true)
+    );
 
     let reveal = Command::cargo_bin("passworder")
         .expect("binary exists")

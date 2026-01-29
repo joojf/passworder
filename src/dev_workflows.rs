@@ -15,7 +15,10 @@ pub enum DevWorkflowError {
     UnknownVariable(String),
 }
 
-pub fn env_vars_for_profile(items: &[vault::VaultItemV1], profile: &str) -> BTreeMap<String, String> {
+pub fn env_vars_for_profile(
+    items: &[vault::VaultItemV1],
+    profile: &str,
+) -> BTreeMap<String, String> {
     let mut vars = BTreeMap::new();
 
     for item in items {
@@ -84,13 +87,18 @@ pub fn render_template(
     Ok(out)
 }
 
-pub fn write_sensitive_file_atomic(path: &Path, contents: &[u8]) -> Result<(), vault::io::VaultIoError> {
+pub fn write_sensitive_file_atomic(
+    path: &Path,
+    contents: &[u8],
+) -> Result<(), vault::io::VaultIoError> {
     vault::io::write_vault_bytes_atomic_unlocked(path, contents)
 }
 
 fn is_valid_env_var_name(s: &str) -> bool {
     let mut chars = s.chars();
-    let Some(first) = chars.next() else { return false };
+    let Some(first) = chars.next() else {
+        return false;
+    };
     if !(first == '_' || first.is_ascii_uppercase()) {
         return false;
     }
