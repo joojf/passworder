@@ -9,5 +9,6 @@ mod output;
 pub mod passphrase;
 pub mod password;
 pub mod token;
+mod tui;
 pub mod vault;
 pub mod version;
