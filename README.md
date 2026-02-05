@@ -53,13 +53,11 @@ The `meta.kind` field identifies the command (`"password"`, `"passphrase"`, `"to
 
 ### Clipboard Copy
 
-Build with the optional clipboard feature to mirror output to your system clipboard:
-
 ```bash
-cargo run --features clipboard -- password --copy
+cargo run -- password --copy
 ```
 
-`--copy` works with password, passphrase, token, and entropy outputs. The value is still printed to STDOUT so scripts keep working, but it is also written to the clipboard when the feature is enabled. Without the feature, the flag emits a warning and execution continues.
+`--copy` works with password, passphrase, token, and entropy outputs. The value is still printed to STDOUT so scripts keep working, and it is also written to the clipboard when possible. If the clipboard is unavailable (for example in headless sessions), the flag emits a warning and execution continues.
 
 Security notes:
 - Clipboard contents are shared across applications and history managers; treat copied secrets as exposed until you clear them.
