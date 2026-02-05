@@ -1,8 +1,10 @@
+use crate::passphrase::PassphraseConfig;
 use crate::password::PasswordConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
     Password,
+    Passphrase,
     Home,
 }
 
@@ -43,9 +45,34 @@ impl Default for PasswordScreenState {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct PassphraseScreenState {
+    pub config: PassphraseConfig,
+    pub generated: Option<String>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+impl Default for PassphraseScreenState {
+    fn default() -> Self {
+        Self {
+            config: PassphraseConfig {
+                word_count: 6,
+                separator: "-".to_string(),
+                title_case: false,
+                wordlist: None,
+            },
+            generated: None,
+            message: None,
+            error: None,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct AppState {
     pub should_quit: bool,
     pub route: Route,
     pub password: PasswordScreenState,
+    pub passphrase: PassphraseScreenState,
 }

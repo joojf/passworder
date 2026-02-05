@@ -91,29 +91,34 @@ fn render(frame: &mut Frame, state: &AppState) {
         ])
         .split(area);
 
-    let header = Paragraph::new("passworder TUI — q/Esc quit • g generate • c copy • [/] cycle profiles • +/- length • l/u/d/s toggle • a ambiguous")
-        .alignment(Alignment::Center)
-        .style(Style::new().dim())
-        .wrap(Wrap { trim: true })
-        .block(Block::bordered().title("Help"));
+    let header = Paragraph::new(
+        "passworder TUI — q/Esc quit • p password • w passphrase • g generate • c copy",
+    )
+    .alignment(Alignment::Center)
+    .style(Style::new().dim())
+    .wrap(Wrap { trim: true })
+    .block(Block::bordered().title("Help"));
 
     frame.render_widget(header, layout[0]);
 
     match state.route {
         crate::tui::state::Route::Home => {
-            let body = Paragraph::new("Home (stub)\n\nPress p for Password screen.")
-                .block(Block::bordered().title("Home"))
-                .wrap(Wrap { trim: true });
+            let body = Paragraph::new(
+                "Home (stub)\n\nPress p for Password screen.\nPress w for Passphrase screen.",
+            )
+            .block(Block::bordered().title("Home"))
+            .wrap(Wrap { trim: true });
             frame.render_widget(body, layout[1]);
         }
         crate::tui::state::Route::Password => render_password(frame, layout[1], state),
+        crate::tui::state::Route::Passphrase => render_passphrase(frame, layout[1], state),
     }
 
     let mut footer_lines = Vec::new();
-    if let Some(msg) = state.password.message.as_deref() {
+    if let Some(msg) = current_message(state) {
         footer_lines.push(format!("Message: {msg}"));
     }
-    if let Some(err) = state.password.error.as_deref() {
+    if let Some(err) = current_error(state) {
         footer_lines.push(format!("Error: {err}"));
     }
     let footer_text = if footer_lines.is_empty() {
@@ -125,6 +130,22 @@ fn render(frame: &mut Frame, state: &AppState) {
         .block(Block::bordered().title("Status"))
         .wrap(Wrap { trim: true });
     frame.render_widget(footer, layout[2]);
+}
+
+fn current_message(state: &AppState) -> Option<&str> {
+    match state.route {
+        crate::tui::state::Route::Home => None,
+        crate::tui::state::Route::Password => state.password.message.as_deref(),
+        crate::tui::state::Route::Passphrase => state.passphrase.message.as_deref(),
+    }
+}
+
+fn current_error(state: &AppState) -> Option<&str> {
+    match state.route {
+        crate::tui::state::Route::Home => None,
+        crate::tui::state::Route::Password => state.password.error.as_deref(),
+        crate::tui::state::Route::Passphrase => state.passphrase.error.as_deref(),
+    }
 }
 
 fn render_password(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
@@ -171,6 +192,33 @@ fn render_password(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppSt
     frame.render_widget(output, chunks[1]);
 }
 
+fn render_passphrase(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(8), Constraint::Min(0)])
+        .split(area);
+
+    let c = &state.passphrase.config;
+    let options = format!(
+        "Words: {} (+/-)\nSeparator: {:?} (e to cycle)\nTitle Case: {} (t to toggle)\nWordlist: built-in (custom wordlist UI not yet implemented)\n\nGenerate: g / Enter   Copy: c   Reset: r",
+        c.word_count, c.separator, c.title_case
+    );
+
+    let options = Paragraph::new(options)
+        .block(Block::bordered().title("Passphrase Options"))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(options, chunks[0]);
+
+    let text = match state.passphrase.generated.as_deref() {
+        Some(value) => format!("Passphrase: {value}"),
+        None => "Passphrase: (none yet)".to_string(),
+    };
+    let output = Paragraph::new(text)
+        .block(Block::bordered().title("Output"))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(output, chunks[1]);
+}
+
 fn run_effects(state: &mut AppState, effects: Vec<Effect>, dev_seed: Option<u64>) {
     for effect in effects {
         match effect {
@@ -202,6 +250,35 @@ fn run_effects(state: &mut AppState, effects: Vec<Effect>, dev_seed: Option<u64>
                     Err(err) => {
                         state.password.error = Some(err);
                         state.password.message = None;
+                    }
+                }
+            }
+            Effect::GeneratePassphrase => {
+                let result = crate::passphrase::generate(state.passphrase.config.clone(), dev_seed);
+                match result {
+                    Ok(value) => {
+                        state.passphrase.generated = Some(value);
+                        state.passphrase.error = None;
+                        state.passphrase.message = Some("Generated.".into());
+                    }
+                    Err(err) => {
+                        state.passphrase.error = Some(err.to_string());
+                        state.passphrase.message = None;
+                    }
+                }
+            }
+            Effect::CopyGeneratedPassphrase => {
+                let Some(value) = state.passphrase.generated.as_deref() else {
+                    continue;
+                };
+                match crate::output::copy_to_clipboard(value) {
+                    Ok(()) => {
+                        state.passphrase.message = Some("Copied to clipboard.".into());
+                        state.passphrase.error = None;
+                    }
+                    Err(err) => {
+                        state.passphrase.error = Some(err);
+                        state.passphrase.message = None;
                     }
                 }
             }
