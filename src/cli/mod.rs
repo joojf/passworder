@@ -15,7 +15,7 @@ pub struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Copy generated output to the system clipboard (requires `--features clipboard`)."
+        help = "Copy generated output to the system clipboard."
     )]
     pub copy: bool,
 

@@ -1,4 +1,3 @@
-use crate::exit_codes::EXIT_IO;
 use serde_json::json;
 use std::process::ExitCode;
 
@@ -26,8 +25,8 @@ pub fn print_value(
     match maybe_copy(&value, copy_requested) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("Error: {error}");
-            ExitCode::from(EXIT_IO)
+            eprintln!("Warning: {error}");
+            ExitCode::SUCCESS
         }
     }
 }
@@ -40,19 +39,12 @@ pub fn maybe_copy(output: &str, copy_requested: bool) -> Result<(), String> {
     copy_to_clipboard(output)
 }
 
-#[cfg(feature = "clipboard")]
 pub fn copy_to_clipboard(output: &str) -> Result<(), String> {
     let mut clipboard = arboard::Clipboard::new()
         .map_err(|error| format!("Failed to access clipboard: {error}"))?;
     clipboard
         .set_text(output.to_owned())
         .map_err(|error| format!("Failed to copy output to clipboard: {error}"))?;
-    Ok(())
-}
-
-#[cfg(not(feature = "clipboard"))]
-pub fn copy_to_clipboard(_output: &str) -> Result<(), String> {
-    eprintln!("Warning: `--copy` requires building with `--features clipboard`.");
     Ok(())
 }
 
