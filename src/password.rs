@@ -11,7 +11,7 @@ pub const AMBIGUOUS_CHARACTERS: &[char] = &['0', 'O', 'o', '1', 'l', 'I', '|'];
 
 const SYMBOLS: &str = "!@#$%^&*()-_=+[]{}<>?/\\|~";
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PasswordConfig {
     pub length: usize,
     pub allow_ambiguous: bool,
