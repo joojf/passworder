@@ -139,16 +139,16 @@ fn apply_strength(report: &mut EntropyReport, input: &str) -> Result<(), Entropy
     report.guesses_log10 = Some(strength.guesses_log10());
     report.score = Some(strength.score());
 
-    let display = strength.crack_times().display();
+    let ct = strength.crack_times();
     report.crack_times_display = Some(CrackTimesDisplayReport {
-        online_throttling_100_per_hour: display.online_throttling_100_per_hour().to_string(),
-        online_no_throttling_10_per_second: display
+        online_throttling_100_per_hour: ct.online_throttling_100_per_hour().to_string(),
+        online_no_throttling_10_per_second: ct
             .online_no_throttling_10_per_second()
             .to_string(),
-        offline_slow_hashing_1e4_per_second: display
+        offline_slow_hashing_1e4_per_second: ct
             .offline_slow_hashing_1e4_per_second()
             .to_string(),
-        offline_fast_hashing_1e10_per_second: display
+        offline_fast_hashing_1e10_per_second: ct
             .offline_fast_hashing_1e10_per_second()
             .to_string(),
     });

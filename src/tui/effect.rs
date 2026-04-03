@@ -2,4 +2,6 @@
 pub enum Effect {
     GeneratePassword,
     CopyGeneratedPassword,
+    GeneratePassphrase,
+    CopyGeneratedPassphrase,
 }
