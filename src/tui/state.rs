@@ -3,6 +3,7 @@ use crate::password::PasswordConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
+    Splash,
     Password,
     Passphrase,
     Home,
@@ -10,8 +11,13 @@ pub enum Route {
 
 impl Default for Route {
     fn default() -> Self {
-        Self::Password
+        Self::Splash
     }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SplashState {
+    pub tick: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -73,6 +79,7 @@ impl Default for PassphraseScreenState {
 pub struct AppState {
     pub should_quit: bool,
     pub route: Route,
+    pub splash: SplashState,
     pub password: PasswordScreenState,
     pub passphrase: PassphraseScreenState,
 }

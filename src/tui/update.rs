@@ -3,15 +3,39 @@ use crate::tui::effect::Effect;
 use crate::tui::state::AppState;
 use crossterm::event::KeyCode;
 
+/// Total number of ticks the splash animation runs before auto-transitioning.
+pub const SPLASH_TOTAL_TICKS: usize = 12;
+
 pub fn update(state: &mut AppState, action: Action) -> Vec<Effect> {
     match action {
-        Action::Tick => Vec::new(),
+        Action::Tick => {
+            if state.route == crate::tui::state::Route::Splash {
+                state.splash.tick += 1;
+                if state.splash.tick >= SPLASH_TOTAL_TICKS {
+                    state.route = crate::tui::state::Route::Password;
+                }
+            }
+            Vec::new()
+        }
         Action::Resize { .. } => Vec::new(),
         Action::KeyPress { code, .. } => handle_key(state, code),
     }
 }
 
 fn handle_key(state: &mut AppState, code: KeyCode) -> Vec<Effect> {
+    // On Splash screen, any key skips to Password (except q/Esc which quit)
+    if state.route == crate::tui::state::Route::Splash {
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                state.should_quit = true;
+            }
+            _ => {
+                state.route = crate::tui::state::Route::Password;
+            }
+        }
+        return Vec::new();
+    }
+
     match code {
         KeyCode::Esc | KeyCode::Char('q') => {
             state.should_quit = true;
@@ -30,6 +54,7 @@ fn handle_key(state: &mut AppState, code: KeyCode) -> Vec<Effect> {
             Vec::new()
         }
         _ => match state.route {
+            crate::tui::state::Route::Splash => Vec::new(),
             crate::tui::state::Route::Home => Vec::new(),
             crate::tui::state::Route::Password => handle_password_screen_key(state, code),
             crate::tui::state::Route::Passphrase => handle_passphrase_screen_key(state, code),
@@ -282,6 +307,7 @@ mod tests {
     #[test]
     fn generate_emits_effect() {
         let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Password;
         let effects = update(
             &mut state,
             Action::KeyPress {
@@ -295,6 +321,7 @@ mod tests {
     #[test]
     fn passphrase_generate_emits_effect() {
         let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Password;
         let _ = update(
             &mut state,
             Action::KeyPress {
@@ -311,5 +338,43 @@ mod tests {
             },
         );
         assert_eq!(effects, vec![Effect::GeneratePassphrase]);
+    }
+
+    #[test]
+    fn splash_any_key_skips_to_password() {
+        let mut state = AppState::default();
+        assert_eq!(state.route, crate::tui::state::Route::Splash);
+        let effects = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('x'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.route, crate::tui::state::Route::Password);
+        assert!(effects.is_empty());
+    }
+
+    #[test]
+    fn splash_q_quits() {
+        let mut state = AppState::default();
+        let effects = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('q'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert!(state.should_quit);
+        assert!(effects.is_empty());
+    }
+
+    #[test]
+    fn splash_tick_advances_and_transitions() {
+        let mut state = AppState::default();
+        for _ in 0..SPLASH_TOTAL_TICKS {
+            let _ = update(&mut state, Action::Tick);
+        }
+        assert_eq!(state.route, crate::tui::state::Route::Password);
     }
 }

@@ -6,12 +6,13 @@ mod update;
 use crate::tui::action::Action;
 use crate::tui::effect::Effect;
 use crate::tui::state::AppState;
-use crate::tui::update::update;
+use crate::tui::update::{SPLASH_TOTAL_TICKS, update};
 use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout};
-use ratatui::style::Style;
-use ratatui::widgets::{Block, Paragraph, Wrap};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, BorderType, Gauge, Padding, Paragraph, Tabs};
 use std::error::Error;
 use std::time::{Duration, Instant};
 
@@ -79,8 +80,30 @@ pub fn run(dev_seed: Option<u64>) -> Result<(), Box<dyn Error>> {
     }
 }
 
+fn rounded_block(title: &str) -> Block<'_> {
+    Block::bordered()
+        .border_type(BorderType::Rounded)
+        .padding(Padding::horizontal(1))
+        .title(format!(" {title} "))
+}
+
+fn toggle_line<'a>(key: char, label: &'a str, enabled: bool) -> Line<'a> {
+    let indicator = if enabled { " ✓" } else { " ✗" };
+    let indicator_color = if enabled { Color::Green } else { Color::Red };
+    Line::from(vec![
+        Span::styled(format!(" [{key}]"), Style::default().fg(Color::Cyan).bold()),
+        Span::raw(format!(" {label}")),
+        Span::styled(indicator, Style::default().fg(indicator_color).bold()),
+    ])
+}
+
 fn render(frame: &mut Frame, state: &AppState) {
     let area = frame.area();
+
+    if state.route == crate::tui::state::Route::Splash {
+        render_splash(frame, area, state);
+        return;
+    }
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
@@ -88,53 +111,84 @@ fn render(frame: &mut Frame, state: &AppState) {
             Constraint::Length(3),
             Constraint::Min(0),
             Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(area);
 
-    let header = Paragraph::new(
-        "passworder TUI — q/Esc quit • p password • w passphrase • g generate • c copy",
-    )
-    .alignment(Alignment::Center)
-    .style(Style::new().dim())
-    .wrap(Wrap { trim: true })
-    .block(Block::bordered().title("Help"));
+    // Tab bar
+    let tab_index = match state.route {
+        crate::tui::state::Route::Password | crate::tui::state::Route::Splash => 0,
+        crate::tui::state::Route::Passphrase => 1,
+        crate::tui::state::Route::Home => 0,
+    };
+    let tabs = Tabs::new(vec![" [p] Password ", " [w] Passphrase "])
+        .select(tab_index)
+        .style(Style::default().fg(Color::DarkGray))
+        .highlight_style(Style::default().fg(Color::Cyan).bold())
+        .divider(Span::styled("│", Style::default().fg(Color::DarkGray)))
+        .block(
+            Block::bordered()
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title(" passworder ")
+                .title_style(Style::default().fg(Color::Cyan).bold()),
+        );
+    frame.render_widget(tabs, layout[0]);
 
-    frame.render_widget(header, layout[0]);
-
+    // Body
     match state.route {
+        crate::tui::state::Route::Splash => unreachable!(),
         crate::tui::state::Route::Home => {
-            let body = Paragraph::new(
-                "Home (stub)\n\nPress p for Password screen.\nPress w for Passphrase screen.",
-            )
-            .block(Block::bordered().title("Home"))
-            .wrap(Wrap { trim: true });
+            let body = Paragraph::new("Press p for Password · Press w for Passphrase")
+                .alignment(Alignment::Center)
+                .block(rounded_block("Home"));
             frame.render_widget(body, layout[1]);
         }
         crate::tui::state::Route::Password => render_password(frame, layout[1], state),
         crate::tui::state::Route::Passphrase => render_passphrase(frame, layout[1], state),
     }
 
-    let mut footer_lines = Vec::new();
-    if let Some(msg) = current_message(state) {
-        footer_lines.push(format!("Message: {msg}"));
-    }
-    if let Some(err) = current_error(state) {
-        footer_lines.push(format!("Error: {err}"));
-    }
-    let footer_text = if footer_lines.is_empty() {
-        "Ready.".to_string()
+    // Status bar
+    let status_line = if let Some(err) = current_error(state) {
+        Line::from(vec![
+            Span::styled(" ✗ ", Style::default().fg(Color::Red).bold()),
+            Span::styled(err, Style::default().fg(Color::Red)),
+        ])
+    } else if let Some(msg) = current_message(state) {
+        Line::from(vec![
+            Span::styled(" ✓ ", Style::default().fg(Color::Green).bold()),
+            Span::styled(msg, Style::default().fg(Color::Green)),
+        ])
     } else {
-        footer_lines.join(" • ")
+        Line::from(Span::styled(" Ready", Style::default().fg(Color::DarkGray)))
     };
-    let footer = Paragraph::new(footer_text)
-        .block(Block::bordered().title("Status"))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(footer, layout[2]);
+    let status = Paragraph::new(status_line).block(
+        Block::bordered()
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::DarkGray)),
+    );
+    frame.render_widget(status, layout[2]);
+
+    // Keybind hints
+    let hints = Line::from(vec![
+        Span::styled(" q", Style::default().fg(Color::Cyan)),
+        Span::styled(" quit  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("g", Style::default().fg(Color::Cyan)),
+        Span::styled(" generate  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("c", Style::default().fg(Color::Cyan)),
+        Span::styled(" copy  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("+/-", Style::default().fg(Color::Cyan)),
+        Span::styled(" adjust  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("r", Style::default().fg(Color::Cyan)),
+        Span::styled(" reset", Style::default().fg(Color::DarkGray)),
+    ]);
+    let hint_bar = Paragraph::new(hints).alignment(Alignment::Center);
+    frame.render_widget(hint_bar, layout[3]);
 }
 
 fn current_message(state: &AppState) -> Option<&str> {
     match state.route {
-        crate::tui::state::Route::Home => None,
+        crate::tui::state::Route::Splash | crate::tui::state::Route::Home => None,
         crate::tui::state::Route::Password => state.password.message.as_deref(),
         crate::tui::state::Route::Passphrase => state.passphrase.message.as_deref(),
     }
@@ -142,16 +196,126 @@ fn current_message(state: &AppState) -> Option<&str> {
 
 fn current_error(state: &AppState) -> Option<&str> {
     match state.route {
-        crate::tui::state::Route::Home => None,
+        crate::tui::state::Route::Splash | crate::tui::state::Route::Home => None,
         crate::tui::state::Route::Password => state.password.error.as_deref(),
         crate::tui::state::Route::Passphrase => state.passphrase.error.as_deref(),
     }
 }
 
-fn render_password(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
+fn render_splash(frame: &mut Frame, area: Rect, state: &AppState) {
+    const BANNER: &[&str] = &[
+        r"                                           _           ",
+        r" _ __   __ _ ___ _____      _____  _ __ __| | ___ _ __ ",
+        r"| '_ \ / _` / __/ __\ \ /\ / / _ \| '__/ _` |/ _ \ '__|",
+        r"| |_) | (_| \__ \__ \\ V  V / (_) | | | (_| |  __/ |   ",
+        r"| .__/ \__,_|___/___/ \_/\_/ \___/|_|  \__,_|\___|_|   ",
+        r"|_|                                                      ",
+    ];
+
+    let banner_width = BANNER.iter().map(|l| l.len()).max().unwrap_or(0);
+    let banner_height = BANNER.len();
+    let tagline = "secure password generator";
+
+    // Total content height: banner + 2 blank lines + tagline
+    let total_height = banner_height + 3;
+    let y_offset = if area.height as usize > total_height {
+        (area.height as usize - total_height) / 2
+    } else {
+        0
+    };
+    let x_offset = if area.width as usize > banner_width {
+        (area.width as usize - banner_width) / 2
+    } else {
+        0
+    };
+
+    // How many columns of the banner to reveal (left-to-right wipe)
+    let progress = state.splash.tick.min(SPLASH_TOTAL_TICKS);
+    let cols_to_show = if SPLASH_TOTAL_TICKS > 0 {
+        (banner_width * progress) / SPLASH_TOTAL_TICKS
+    } else {
+        banner_width
+    };
+
+    // Gradient colors for the reveal — cycles through these
+    let colors = [
+        Color::Cyan,
+        Color::LightCyan,
+        Color::Blue,
+        Color::LightBlue,
+        Color::Magenta,
+        Color::LightMagenta,
+    ];
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Vertical padding
+    for _ in 0..y_offset {
+        lines.push(Line::from(""));
+    }
+
+    // Banner lines with progressive reveal and color gradient
+    for row in BANNER {
+        let mut spans = Vec::new();
+        // Left padding
+        if x_offset > 0 {
+            spans.push(Span::raw(" ".repeat(x_offset)));
+        }
+
+        let chars: Vec<char> = row.chars().collect();
+        for (i, &ch) in chars.iter().enumerate() {
+            if i < cols_to_show {
+                let color_idx = (i + state.splash.tick) % colors.len();
+                spans.push(Span::styled(
+                    String::from(ch),
+                    Style::default().fg(colors[color_idx]).bold(),
+                ));
+            }
+        }
+        lines.push(Line::from(spans));
+    }
+
+    // Tagline appears after banner is ~60% revealed
+    let tagline_threshold = SPLASH_TOTAL_TICKS * 6 / 10;
+    if state.splash.tick >= tagline_threshold {
+        lines.push(Line::from(""));
+        lines.push(Line::from(""));
+        let tagline_x = if area.width as usize > tagline.len() {
+            (area.width as usize - tagline.len()) / 2
+        } else {
+            0
+        };
+        let padding = " ".repeat(tagline_x);
+        lines.push(Line::from(vec![
+            Span::raw(padding),
+            Span::styled(tagline, Style::default().fg(Color::DarkGray).italic()),
+        ]));
+    }
+
+    // "Press any key" hint after the animation is nearly done
+    if state.splash.tick >= SPLASH_TOTAL_TICKS - 2 {
+        lines.push(Line::from(""));
+        let hint = "press any key to continue";
+        let hint_x = if area.width as usize > hint.len() {
+            (area.width as usize - hint.len()) / 2
+        } else {
+            0
+        };
+        let padding = " ".repeat(hint_x);
+        lines.push(Line::from(vec![
+            Span::raw(padding),
+            Span::styled(hint, Style::default().fg(Color::DarkGray).dim()),
+        ]));
+    }
+
+    let splash = Paragraph::new(lines);
+    frame.render_widget(splash, area);
+}
+
+fn render_password(frame: &mut Frame, area: Rect, state: &AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(8), Constraint::Min(0)])
+        .constraints([Constraint::Length(10), Constraint::Min(0)])
         .split(area);
 
     let profile_name = state
@@ -159,63 +323,135 @@ fn render_password(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppSt
         .active_profile
         .and_then(|idx| state.password.profiles.get(idx))
         .map(|p| p.name.as_str())
-        .unwrap_or("custom/default");
+        .unwrap_or("default");
 
     let c = &state.password.config;
-    let options = format!(
-        "Profile: {profile_name}\nLength: {} (+/-)\nClasses: [l]lower={} [u]upper={} [d]digits={} [s]symbols={}\nAmbiguous: [a]allow_ambiguous={}\n\nGenerate: g / Enter   Copy: c",
-        c.length,
-        c.include_lowercase,
-        c.include_uppercase,
-        c.include_digits,
-        c.include_symbols,
-        c.allow_ambiguous
-    );
 
-    let options = Paragraph::new(options)
-        .block(Block::bordered().title("Password Options"))
-        .wrap(Wrap { trim: true });
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("  Profile  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(profile_name, Style::default().fg(Color::Cyan)),
+            Span::styled("  [ ] / [ ] cycle", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(vec![
+            Span::styled("  Length   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{}", c.length),
+                Style::default().fg(Color::White).bold(),
+            ),
+            Span::styled("  +/- to adjust", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(""),
+        toggle_line('l', "Lowercase", c.include_lowercase),
+        toggle_line('u', "Uppercase", c.include_uppercase),
+        toggle_line('d', "Digits   ", c.include_digits),
+        toggle_line('s', "Symbols  ", c.include_symbols),
+        toggle_line('a', "Ambiguous", c.allow_ambiguous),
+    ];
+
+    let options = Paragraph::new(lines).block(rounded_block("Options"));
     frame.render_widget(options, chunks[0]);
 
-    let mut output_lines = Vec::new();
-    if let Some(value) = state.password.generated.as_deref() {
-        output_lines.push(format!("Password: {value}"));
-        if let Some(score) = state.password.strength_score {
-            output_lines.push(format!("Strength score: {score}/4"));
-        }
+    // Output section
+    let output_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(3), Constraint::Length(3)])
+        .split(chunks[1]);
+
+    let output_line = if let Some(value) = state.password.generated.as_deref() {
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(value, Style::default().fg(Color::Green).bold()),
+        ])
     } else {
-        output_lines.push("Password: (none yet)".to_string());
+        Line::from(Span::styled(
+            "  press g or Enter to generate",
+            Style::default().fg(Color::DarkGray).italic(),
+        ))
+    };
+    let output = Paragraph::new(output_line).block(rounded_block("Generated Password"));
+    frame.render_widget(output, output_chunks[0]);
+
+    // Strength gauge
+    if let Some(score) = state.password.strength_score {
+        let (ratio, label, color) = match score {
+            0 => (0.05, "Very Weak (0/4)", Color::Red),
+            1 => (0.25, "Weak (1/4)", Color::LightRed),
+            2 => (0.50, "Fair (2/4)", Color::Yellow),
+            3 => (0.75, "Strong (3/4)", Color::LightGreen),
+            _ => (1.00, "Very Strong (4/4)", Color::Green),
+        };
+        let gauge = Gauge::default()
+            .ratio(ratio)
+            .label(label)
+            .gauge_style(Style::default().fg(color).add_modifier(Modifier::BOLD))
+            .block(rounded_block("Strength"));
+        frame.render_widget(gauge, output_chunks[1]);
+    } else {
+        let placeholder = Paragraph::new(Span::styled(
+            "  strength score appears after generation",
+            Style::default().fg(Color::DarkGray).italic(),
+        ))
+        .block(rounded_block("Strength"));
+        frame.render_widget(placeholder, output_chunks[1]);
     }
-    let output = Paragraph::new(output_lines.join("\n"))
-        .block(Block::bordered().title("Output"))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(output, chunks[1]);
 }
 
-fn render_passphrase(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
+fn render_passphrase(frame: &mut Frame, area: Rect, state: &AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(8), Constraint::Min(0)])
         .split(area);
 
     let c = &state.passphrase.config;
-    let options = format!(
-        "Words: {} (+/-)\nSeparator: {:?} (e to cycle)\nTitle Case: {} (t to toggle)\nWordlist: built-in (custom wordlist UI not yet implemented)\n\nGenerate: g / Enter   Copy: c   Reset: r",
-        c.word_count, c.separator, c.title_case
-    );
 
-    let options = Paragraph::new(options)
-        .block(Block::bordered().title("Passphrase Options"))
-        .wrap(Wrap { trim: true });
+    let sep_display = match c.separator.as_str() {
+        "-" => "hyphen (-)",
+        " " => "space ( )",
+        "_" => "underscore (_)",
+        "." => "dot (.)",
+        other => other,
+    };
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("  Words      ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{}", c.word_count),
+                Style::default().fg(Color::White).bold(),
+            ),
+            Span::styled("  +/- to adjust", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(vec![
+            Span::styled(" [e]", Style::default().fg(Color::Cyan).bold()),
+            Span::styled(" Separator  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(sep_display, Style::default().fg(Color::White).bold()),
+        ]),
+        Line::from(""),
+        toggle_line('t', "Title Case", c.title_case),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Wordlist: built-in",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+
+    let options = Paragraph::new(lines).block(rounded_block("Options"));
     frame.render_widget(options, chunks[0]);
 
-    let text = match state.passphrase.generated.as_deref() {
-        Some(value) => format!("Passphrase: {value}"),
-        None => "Passphrase: (none yet)".to_string(),
+    let output_line = if let Some(value) = state.passphrase.generated.as_deref() {
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(value, Style::default().fg(Color::Green).bold()),
+        ])
+    } else {
+        Line::from(Span::styled(
+            "  press g or Enter to generate",
+            Style::default().fg(Color::DarkGray).italic(),
+        ))
     };
-    let output = Paragraph::new(text)
-        .block(Block::bordered().title("Output"))
-        .wrap(Wrap { trim: true });
+    let output =
+        Paragraph::new(output_line).block(rounded_block("Generated Passphrase"));
     frame.render_widget(output, chunks[1]);
 }
 
