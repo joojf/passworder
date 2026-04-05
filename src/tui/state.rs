@@ -2,19 +2,14 @@ use crate::entropy::EntropyReport;
 use crate::passphrase::PassphraseConfig;
 use crate::password::PasswordConfig;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Route {
+    #[default]
     Splash,
     Password,
     Passphrase,
     Entropy,
     Home,
-}
-
-impl Default for Route {
-    fn default() -> Self {
-        Self::Splash
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
