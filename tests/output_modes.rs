@@ -58,8 +58,11 @@ fn entropy_json_mode_wraps_existing_report() {
     let report = meta.get("report").expect("report field").clone();
 
     assert_eq!(report.get("length").and_then(Value::as_u64), Some(3));
-    // Strength-related fields should still be absent without the feature.
-    assert!(report.get("score").is_none());
-    assert!(report.get("guesses_log10").is_none());
-    assert!(report.get("crack_times_display").is_none());
+    // Strength-related fields should be absent without the feature.
+    #[cfg(not(feature = "strength"))]
+    {
+        assert!(report.get("score").is_none());
+        assert!(report.get("guesses_log10").is_none());
+        assert!(report.get("crack_times_display").is_none());
+    }
 }

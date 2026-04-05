@@ -28,7 +28,7 @@ pub struct ProfileEntry {
     pub config: PasswordConfig,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PasswordScreenState {
     pub profiles: Vec<ProfileEntry>,
     pub active_profile: Option<usize>,
@@ -37,20 +37,6 @@ pub struct PasswordScreenState {
     pub strength_score: Option<u8>,
     pub message: Option<String>,
     pub error: Option<String>,
-}
-
-impl Default for PasswordScreenState {
-    fn default() -> Self {
-        Self {
-            profiles: Vec::new(),
-            active_profile: None,
-            config: PasswordConfig::default(),
-            generated: None,
-            strength_score: None,
-            message: None,
-            error: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -77,25 +63,13 @@ impl Default for PassphraseScreenState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EntropyScreenState {
     pub input: String,
     pub masked: bool,
     pub report: Option<EntropyReport>,
     pub message: Option<String>,
     pub error: Option<String>,
-}
-
-impl Default for EntropyScreenState {
-    fn default() -> Self {
-        Self {
-            input: String::new(),
-            masked: false,
-            report: None,
-            message: None,
-            error: None,
-        }
-    }
 }
 
 #[derive(Debug, Default, Clone)]
