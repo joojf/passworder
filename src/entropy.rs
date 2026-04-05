@@ -38,16 +38,16 @@ pub struct EntropyConfig {
     pub input: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct EntropyReport {
-    length: usize,
-    shannon_bits_estimate: f64,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntropyReport {
+    pub length: usize,
+    pub shannon_bits_estimate: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    guesses_log10: Option<f64>,
+    pub guesses_log10: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    score: Option<u8>,
+    pub score: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    crack_times_display: Option<CrackTimesDisplayReport>,
+    pub crack_times_display: Option<CrackTimesDisplayReport>,
 }
 
 impl EntropyReport {
@@ -67,20 +67,12 @@ pub fn analyze(config: EntropyConfig) -> Result<String, EntropyError> {
     analyze_with_reader(config, &mut stdin)
 }
 
-fn analyze_with_reader<R: Read>(
-    config: EntropyConfig,
-    reader: &mut R,
-) -> Result<String, EntropyError> {
-    let input = match config.input {
-        Some(input) => input,
-        None => read_from_reader(reader)?,
-    };
-
+pub fn analyze_str(input: &str) -> Result<EntropyReport, EntropyError> {
     let length = input.chars().count();
     let shannon_bits = if length == 0 {
         0.0
     } else {
-        calculate_shannon_bits(&input, length)
+        calculate_shannon_bits(input, length)
     };
 
     let estimate = round_to_precision(shannon_bits, 6);
@@ -90,8 +82,21 @@ fn analyze_with_reader<R: Read>(
     let mut report = EntropyReport::new(length, estimate);
 
     #[cfg(feature = "strength")]
-    apply_strength(&mut report, &input)?;
+    apply_strength(&mut report, input)?;
 
+    Ok(report)
+}
+
+fn analyze_with_reader<R: Read>(
+    config: EntropyConfig,
+    reader: &mut R,
+) -> Result<String, EntropyError> {
+    let input = match config.input {
+        Some(input) => input,
+        None => read_from_reader(reader)?,
+    };
+
+    let report = analyze_str(&input)?;
     serde_json::to_string(&report).map_err(EntropyError::Serialization)
 }
 
@@ -123,12 +128,12 @@ fn round_to_precision(value: f64, decimals: u32) -> f64 {
 }
 
 #[cfg_attr(not(feature = "strength"), allow(dead_code))]
-#[derive(Debug, Serialize, Deserialize)]
-struct CrackTimesDisplayReport {
-    online_throttling_100_per_hour: String,
-    online_no_throttling_10_per_second: String,
-    offline_slow_hashing_1e4_per_second: String,
-    offline_fast_hashing_1e10_per_second: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrackTimesDisplayReport {
+    pub online_throttling_100_per_hour: String,
+    pub online_no_throttling_10_per_second: String,
+    pub offline_slow_hashing_1e4_per_second: String,
+    pub offline_fast_hashing_1e10_per_second: String,
 }
 
 #[cfg(feature = "strength")]

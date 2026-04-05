@@ -1,3 +1,4 @@
+use crate::entropy::EntropyReport;
 use crate::passphrase::PassphraseConfig;
 use crate::password::PasswordConfig;
 
@@ -6,6 +7,7 @@ pub enum Route {
     Splash,
     Password,
     Passphrase,
+    Entropy,
     Home,
 }
 
@@ -75,6 +77,27 @@ impl Default for PassphraseScreenState {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct EntropyScreenState {
+    pub input: String,
+    pub masked: bool,
+    pub report: Option<EntropyReport>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+impl Default for EntropyScreenState {
+    fn default() -> Self {
+        Self {
+            input: String::new(),
+            masked: false,
+            report: None,
+            message: None,
+            error: None,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct AppState {
     pub should_quit: bool,
@@ -82,4 +105,5 @@ pub struct AppState {
     pub splash: SplashState,
     pub password: PasswordScreenState,
     pub passphrase: PassphraseScreenState,
+    pub entropy: EntropyScreenState,
 }

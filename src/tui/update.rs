@@ -1,7 +1,7 @@
 use crate::tui::action::Action;
 use crate::tui::effect::Effect;
 use crate::tui::state::AppState;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyModifiers};
 
 /// Total number of ticks the splash animation runs before auto-transitioning.
 pub const SPLASH_TOTAL_TICKS: usize = 12;
@@ -18,11 +18,11 @@ pub fn update(state: &mut AppState, action: Action) -> Vec<Effect> {
             Vec::new()
         }
         Action::Resize { .. } => Vec::new(),
-        Action::KeyPress { code, .. } => handle_key(state, code),
+        Action::KeyPress { code, modifiers } => handle_key(state, code, modifiers),
     }
 }
 
-fn handle_key(state: &mut AppState, code: KeyCode) -> Vec<Effect> {
+fn handle_key(state: &mut AppState, code: KeyCode, modifiers: KeyModifiers) -> Vec<Effect> {
     // On Splash screen, any key skips to Password (except q/Esc which quit)
     if state.route == crate::tui::state::Route::Splash {
         match code {
@@ -53,11 +53,28 @@ fn handle_key(state: &mut AppState, code: KeyCode) -> Vec<Effect> {
             state.route = crate::tui::state::Route::Passphrase;
             Vec::new()
         }
+        KeyCode::Char('e') if state.route != crate::tui::state::Route::Entropy => {
+            let generated = match state.route {
+                crate::tui::state::Route::Password => state.password.generated.clone(),
+                crate::tui::state::Route::Passphrase => state.passphrase.generated.clone(),
+                _ => None,
+            };
+            state.route = crate::tui::state::Route::Entropy;
+            if let Some(value) = generated {
+                state.entropy.input = value;
+                state.entropy.report = None;
+                state.entropy.error = None;
+                state.entropy.message = None;
+                return vec![Effect::AnalyzeEntropy];
+            }
+            Vec::new()
+        }
         _ => match state.route {
             crate::tui::state::Route::Splash => Vec::new(),
             crate::tui::state::Route::Home => Vec::new(),
             crate::tui::state::Route::Password => handle_password_screen_key(state, code),
             crate::tui::state::Route::Passphrase => handle_passphrase_screen_key(state, code),
+            crate::tui::state::Route::Entropy => handle_entropy_screen_key(state, code, modifiers),
         },
     }
 }
@@ -155,6 +172,48 @@ fn handle_passphrase_screen_key(state: &mut AppState, code: KeyCode) -> Vec<Effe
         }
         _ => Vec::new(),
     }
+}
+
+fn handle_entropy_screen_key(
+    state: &mut AppState,
+    code: KeyCode,
+    modifiers: KeyModifiers,
+) -> Vec<Effect> {
+    match code {
+        KeyCode::Enter => {
+            if state.entropy.input.is_empty() {
+                state.entropy.message = Some("Type a string first, then press Enter.".into());
+                Vec::new()
+            } else {
+                vec![Effect::AnalyzeEntropy]
+            }
+        }
+        KeyCode::Backspace => {
+            state.entropy.input.pop();
+            clear_entropy_outputs(state);
+            Vec::new()
+        }
+        KeyCode::Char('m') if modifiers.contains(KeyModifiers::CONTROL) => {
+            state.entropy.masked = !state.entropy.masked;
+            Vec::new()
+        }
+        KeyCode::Char('r') if modifiers.contains(KeyModifiers::CONTROL) => {
+            state.entropy = crate::tui::state::EntropyScreenState::default();
+            Vec::new()
+        }
+        KeyCode::Char(ch) => {
+            state.entropy.input.push(ch);
+            clear_entropy_outputs(state);
+            Vec::new()
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn clear_entropy_outputs(state: &mut AppState) {
+    state.entropy.report = None;
+    state.entropy.error = None;
+    state.entropy.message = None;
 }
 
 fn clear_password_outputs(state: &mut AppState) {
@@ -376,5 +435,176 @@ mod tests {
             let _ = update(&mut state, Action::Tick);
         }
         assert_eq!(state.route, crate::tui::state::Route::Password);
+    }
+
+    #[test]
+    fn e_navigates_to_entropy() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Password;
+        let effects = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('e'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.route, crate::tui::state::Route::Entropy);
+        assert!(effects.is_empty());
+    }
+
+    #[test]
+    fn entropy_char_input_appends() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Entropy;
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('a'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('b'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.entropy.input, "ab");
+    }
+
+    #[test]
+    fn entropy_backspace_removes_last() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Entropy;
+        state.entropy.input = "abc".into();
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Backspace,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.entropy.input, "ab");
+    }
+
+    #[test]
+    fn entropy_enter_emits_analyze() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Entropy;
+        state.entropy.input = "test".into();
+        let effects = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(effects, vec![Effect::AnalyzeEntropy]);
+    }
+
+    #[test]
+    fn entropy_enter_empty_does_not_analyze() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Entropy;
+        let effects = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert!(effects.is_empty());
+        assert!(state.entropy.message.is_some());
+    }
+
+    #[test]
+    fn entropy_ctrl_r_resets() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Entropy;
+        state.entropy.input = "test".into();
+        state.entropy.masked = true;
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('r'),
+                modifiers: KeyModifiers::CONTROL,
+            },
+        );
+        assert!(state.entropy.input.is_empty());
+        assert!(!state.entropy.masked);
+    }
+
+    #[test]
+    fn entropy_ctrl_m_toggles_mask() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Entropy;
+        assert!(!state.entropy.masked);
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('m'),
+                modifiers: KeyModifiers::CONTROL,
+            },
+        );
+        assert!(state.entropy.masked);
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('m'),
+                modifiers: KeyModifiers::CONTROL,
+            },
+        );
+        assert!(!state.entropy.masked);
+    }
+
+    #[test]
+    fn e_from_password_carries_generated_value() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Password;
+        state.password.generated = Some("s3cret!".into());
+        let effects = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('e'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.route, crate::tui::state::Route::Entropy);
+        assert_eq!(state.entropy.input, "s3cret!");
+        assert_eq!(effects, vec![Effect::AnalyzeEntropy]);
+    }
+
+    #[test]
+    fn e_from_passphrase_carries_generated_value() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Passphrase;
+        state.passphrase.generated = Some("correct-horse-battery".into());
+        let effects = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('e'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.route, crate::tui::state::Route::Entropy);
+        assert_eq!(state.entropy.input, "correct-horse-battery");
+        assert_eq!(effects, vec![Effect::AnalyzeEntropy]);
+    }
+
+    #[test]
+    fn e_without_generated_navigates_empty() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Password;
+        let effects = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('e'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.route, crate::tui::state::Route::Entropy);
+        assert!(state.entropy.input.is_empty());
+        assert!(effects.is_empty());
     }
 }
