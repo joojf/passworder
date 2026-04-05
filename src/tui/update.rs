@@ -53,10 +53,15 @@ fn handle_key(state: &mut AppState, code: KeyCode, modifiers: KeyModifiers) -> V
             state.route = crate::tui::state::Route::Passphrase;
             Vec::new()
         }
+        KeyCode::Char('t') if state.route != crate::tui::state::Route::Passphrase => {
+            state.route = crate::tui::state::Route::Token;
+            Vec::new()
+        }
         KeyCode::Char('e') if state.route != crate::tui::state::Route::Entropy => {
             let generated = match state.route {
                 crate::tui::state::Route::Password => state.password.generated.clone(),
                 crate::tui::state::Route::Passphrase => state.passphrase.generated.clone(),
+                crate::tui::state::Route::Token => state.token.generated.clone(),
                 _ => None,
             };
             state.route = crate::tui::state::Route::Entropy;
@@ -75,6 +80,7 @@ fn handle_key(state: &mut AppState, code: KeyCode, modifiers: KeyModifiers) -> V
             crate::tui::state::Route::Password => handle_password_screen_key(state, code),
             crate::tui::state::Route::Passphrase => handle_passphrase_screen_key(state, code),
             crate::tui::state::Route::Entropy => handle_entropy_screen_key(state, code, modifiers),
+            crate::tui::state::Route::Token => handle_token_screen_key(state, code),
         },
     }
 }
@@ -208,6 +214,65 @@ fn handle_entropy_screen_key(
         }
         _ => Vec::new(),
     }
+}
+
+fn handle_token_screen_key(state: &mut AppState, code: KeyCode) -> Vec<Effect> {
+    match code {
+        KeyCode::Enter | KeyCode::Char('g') => vec![Effect::GenerateToken],
+        KeyCode::Char('c') => {
+            if state.token.generated.is_some() {
+                vec![Effect::CopyGeneratedToken]
+            } else {
+                state.token.message = Some("Nothing to copy yet. Press g to generate.".into());
+                Vec::new()
+            }
+        }
+        KeyCode::Char('r') => {
+            state.token = crate::tui::state::TokenScreenState::default();
+            Vec::new()
+        }
+        KeyCode::Char('f') => {
+            cycle_token_format(state);
+            Vec::new()
+        }
+        KeyCode::Char('+') | KeyCode::Char('=') => {
+            bump_token_bytes(state, 1);
+            Vec::new()
+        }
+        KeyCode::Char('-') => {
+            bump_token_bytes(state, -1);
+            Vec::new()
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn cycle_token_format(state: &mut AppState) {
+    use crate::tui::state::TokenFormat;
+    state.token.format = match state.token.format {
+        TokenFormat::Hex => TokenFormat::B64,
+        TokenFormat::B64 => TokenFormat::Uuid,
+        TokenFormat::Uuid => TokenFormat::Hex,
+    };
+    clear_token_outputs(state);
+}
+
+fn bump_token_bytes(state: &mut AppState, delta: i32) {
+    if state.token.format == crate::tui::state::TokenFormat::Uuid {
+        return;
+    }
+    let current = state.token.bytes as i32;
+    let next = (current + delta).clamp(1, 128) as usize;
+    if next != state.token.bytes {
+        state.token.bytes = next;
+        clear_token_outputs(state);
+    }
+}
+
+fn clear_token_outputs(state: &mut AppState) {
+    state.token.generated = None;
+    state.token.error = None;
+    state.token.message = None;
 }
 
 fn clear_entropy_outputs(state: &mut AppState) {
@@ -590,6 +655,160 @@ mod tests {
         assert_eq!(state.route, crate::tui::state::Route::Entropy);
         assert_eq!(state.entropy.input, "correct-horse-battery");
         assert_eq!(effects, vec![Effect::AnalyzeEntropy]);
+    }
+
+    #[test]
+    fn t_navigates_to_token() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Password;
+        let effects = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('t'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.route, crate::tui::state::Route::Token);
+        assert!(effects.is_empty());
+    }
+
+    #[test]
+    fn t_on_passphrase_does_not_navigate() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Passphrase;
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('t'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.route, crate::tui::state::Route::Passphrase);
+    }
+
+    #[test]
+    fn token_generate_emits_effect() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Token;
+        let effects = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('g'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(effects, vec![Effect::GenerateToken]);
+    }
+
+    #[test]
+    fn token_copy_without_generated_shows_message() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Token;
+        let effects = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('c'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert!(effects.is_empty());
+        assert!(state.token.message.is_some());
+    }
+
+    #[test]
+    fn token_f_cycles_format() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Token;
+        assert_eq!(state.token.format, crate::tui::state::TokenFormat::Hex);
+
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('f'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.token.format, crate::tui::state::TokenFormat::B64);
+
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('f'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.token.format, crate::tui::state::TokenFormat::Uuid);
+
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('f'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.token.format, crate::tui::state::TokenFormat::Hex);
+    }
+
+    #[test]
+    fn token_plus_minus_adjusts_bytes() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Token;
+        assert_eq!(state.token.bytes, 16);
+
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('+'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.token.bytes, 17);
+
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('-'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.token.bytes, 16);
+    }
+
+    #[test]
+    fn token_bytes_noop_for_uuid() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Token;
+        state.token.format = crate::tui::state::TokenFormat::Uuid;
+        let original = state.token.bytes;
+
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('+'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.token.bytes, original);
+    }
+
+    #[test]
+    fn token_r_resets() {
+        let mut state = AppState::default();
+        state.route = crate::tui::state::Route::Token;
+        state.token.format = crate::tui::state::TokenFormat::Uuid;
+        state.token.bytes = 32;
+        state.token.generated = Some("test".into());
+
+        let _ = update(
+            &mut state,
+            Action::KeyPress {
+                code: KeyCode::Char('r'),
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(state.token.format, crate::tui::state::TokenFormat::Hex);
+        assert_eq!(state.token.bytes, 16);
+        assert!(state.token.generated.is_none());
     }
 
     #[test]

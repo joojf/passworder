@@ -5,4 +5,6 @@ pub enum Effect {
     GeneratePassphrase,
     CopyGeneratedPassphrase,
     AnalyzeEntropy,
+    GenerateToken,
+    CopyGeneratedToken,
 }

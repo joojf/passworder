@@ -9,6 +9,7 @@ pub enum Route {
     Password,
     Passphrase,
     Entropy,
+    Token,
     Home,
 }
 
@@ -58,6 +59,35 @@ impl Default for PassphraseScreenState {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TokenFormat {
+    #[default]
+    Hex,
+    B64,
+    Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct TokenScreenState {
+    pub format: TokenFormat,
+    pub bytes: usize,
+    pub generated: Option<String>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+impl Default for TokenScreenState {
+    fn default() -> Self {
+        Self {
+            format: TokenFormat::Hex,
+            bytes: 16,
+            generated: None,
+            message: None,
+            error: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct EntropyScreenState {
     pub input: String,
@@ -75,4 +105,5 @@ pub struct AppState {
     pub password: PasswordScreenState,
     pub passphrase: PassphraseScreenState,
     pub entropy: EntropyScreenState,
+    pub token: TokenScreenState,
 }

@@ -120,20 +120,26 @@ fn render(frame: &mut Frame, state: &AppState) {
         crate::tui::state::Route::Password | crate::tui::state::Route::Splash => 0,
         crate::tui::state::Route::Passphrase => 1,
         crate::tui::state::Route::Entropy => 2,
+        crate::tui::state::Route::Token => 3,
         crate::tui::state::Route::Home => 0,
     };
-    let tabs = Tabs::new(vec![" [p] Password ", " [w] Passphrase ", " [e] Entropy "])
-        .select(tab_index)
-        .style(Style::default().fg(Color::DarkGray))
-        .highlight_style(Style::default().fg(Color::Cyan).bold())
-        .divider(Span::styled("│", Style::default().fg(Color::DarkGray)))
-        .block(
-            Block::bordered()
-                .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(Color::DarkGray))
-                .title(" passworder ")
-                .title_style(Style::default().fg(Color::Cyan).bold()),
-        );
+    let tabs = Tabs::new(vec![
+        " [p] Password ",
+        " [w] Passphrase ",
+        " [e] Entropy ",
+        " [t] Token ",
+    ])
+    .select(tab_index)
+    .style(Style::default().fg(Color::DarkGray))
+    .highlight_style(Style::default().fg(Color::Cyan).bold())
+    .divider(Span::styled("│", Style::default().fg(Color::DarkGray)))
+    .block(
+        Block::bordered()
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::DarkGray))
+            .title(" passworder ")
+            .title_style(Style::default().fg(Color::Cyan).bold()),
+    );
     frame.render_widget(tabs, layout[0]);
 
     // Body
@@ -148,6 +154,7 @@ fn render(frame: &mut Frame, state: &AppState) {
         crate::tui::state::Route::Password => render_password(frame, layout[1], state),
         crate::tui::state::Route::Passphrase => render_passphrase(frame, layout[1], state),
         crate::tui::state::Route::Entropy => render_entropy(frame, layout[1], state),
+        crate::tui::state::Route::Token => render_token(frame, layout[1], state),
     }
 
     // Status bar
@@ -183,6 +190,21 @@ fn render(frame: &mut Frame, state: &AppState) {
             Span::styled("Ctrl+r", Style::default().fg(Color::Cyan)),
             Span::styled(" reset", Style::default().fg(Color::DarkGray)),
         ])
+    } else if state.route == crate::tui::state::Route::Token {
+        Line::from(vec![
+            Span::styled(" q", Style::default().fg(Color::Cyan)),
+            Span::styled(" quit  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("g", Style::default().fg(Color::Cyan)),
+            Span::styled(" generate  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("c", Style::default().fg(Color::Cyan)),
+            Span::styled(" copy  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("f", Style::default().fg(Color::Cyan)),
+            Span::styled(" format  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("+/-", Style::default().fg(Color::Cyan)),
+            Span::styled(" bytes  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("r", Style::default().fg(Color::Cyan)),
+            Span::styled(" reset", Style::default().fg(Color::DarkGray)),
+        ])
     } else {
         Line::from(vec![
             Span::styled(" q", Style::default().fg(Color::Cyan)),
@@ -207,6 +229,7 @@ fn current_message(state: &AppState) -> Option<&str> {
         crate::tui::state::Route::Password => state.password.message.as_deref(),
         crate::tui::state::Route::Passphrase => state.passphrase.message.as_deref(),
         crate::tui::state::Route::Entropy => state.entropy.message.as_deref(),
+        crate::tui::state::Route::Token => state.token.message.as_deref(),
     }
 }
 
@@ -216,6 +239,7 @@ fn current_error(state: &AppState) -> Option<&str> {
         crate::tui::state::Route::Password => state.password.error.as_deref(),
         crate::tui::state::Route::Passphrase => state.passphrase.error.as_deref(),
         crate::tui::state::Route::Entropy => state.entropy.error.as_deref(),
+        crate::tui::state::Route::Token => state.token.error.as_deref(),
     }
 }
 
@@ -619,6 +643,66 @@ fn render_entropy(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 }
 
+fn render_token(frame: &mut Frame, area: Rect, state: &AppState) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(6), Constraint::Min(0)])
+        .split(area);
+
+    let format_label = match state.token.format {
+        crate::tui::state::TokenFormat::Hex => "Hex",
+        crate::tui::state::TokenFormat::B64 => "Base64",
+        crate::tui::state::TokenFormat::Uuid => "UUID v4",
+    };
+
+    let is_uuid = state.token.format == crate::tui::state::TokenFormat::Uuid;
+
+    let bytes_display = if is_uuid {
+        Span::styled("n/a", Style::default().fg(Color::DarkGray))
+    } else {
+        Span::styled(
+            format!("{}", state.token.bytes),
+            Style::default().fg(Color::White).bold(),
+        )
+    };
+
+    let bytes_hint = if is_uuid {
+        Span::styled("  (fixed for UUID)", Style::default().fg(Color::DarkGray))
+    } else {
+        Span::styled("  +/- to adjust", Style::default().fg(Color::DarkGray))
+    };
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(" [f]", Style::default().fg(Color::Cyan).bold()),
+            Span::styled(" Format   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format_label, Style::default().fg(Color::Cyan).bold()),
+        ]),
+        Line::from(vec![
+            Span::styled("     Bytes    ", Style::default().fg(Color::DarkGray)),
+            bytes_display,
+            bytes_hint,
+        ]),
+    ];
+
+    let options = Paragraph::new(lines).block(rounded_block("Options"));
+    frame.render_widget(options, chunks[0]);
+
+    let output_line = if let Some(value) = state.token.generated.as_deref() {
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(value, Style::default().fg(Color::Green).bold()),
+        ])
+    } else {
+        Line::from(Span::styled(
+            "  press g or Enter to generate",
+            Style::default().fg(Color::DarkGray).italic(),
+        ))
+    };
+    let output = Paragraph::new(output_line).block(rounded_block("Generated Token"));
+    frame.render_widget(output, chunks[1]);
+}
+
 fn run_effects(state: &mut AppState, effects: Vec<Effect>, dev_seed: Option<u64>) {
     for effect in effects {
         match effect {
@@ -679,6 +763,47 @@ fn run_effects(state: &mut AppState, effects: Vec<Effect>, dev_seed: Option<u64>
                     Err(err) => {
                         state.passphrase.error = Some(err);
                         state.passphrase.message = None;
+                    }
+                }
+            }
+            Effect::GenerateToken => {
+                use crate::cli::{TokenBytesArgs, TokenCommands};
+                use crate::tui::state::TokenFormat;
+
+                let command = match state.token.format {
+                    TokenFormat::Hex => TokenCommands::Hex(TokenBytesArgs {
+                        bytes: state.token.bytes,
+                    }),
+                    TokenFormat::B64 => TokenCommands::B64(TokenBytesArgs {
+                        bytes: state.token.bytes,
+                    }),
+                    TokenFormat::Uuid => TokenCommands::Uuid,
+                };
+
+                match crate::token::handle(command, dev_seed) {
+                    Ok(value) => {
+                        state.token.generated = Some(value);
+                        state.token.error = None;
+                        state.token.message = Some("Generated.".into());
+                    }
+                    Err(err) => {
+                        state.token.error = Some(err.to_string());
+                        state.token.message = None;
+                    }
+                }
+            }
+            Effect::CopyGeneratedToken => {
+                let Some(value) = state.token.generated.as_deref() else {
+                    continue;
+                };
+                match crate::output::copy_to_clipboard(value) {
+                    Ok(()) => {
+                        state.token.message = Some("Copied to clipboard.".into());
+                        state.token.error = None;
+                    }
+                    Err(err) => {
+                        state.token.error = Some(err);
+                        state.token.message = None;
                     }
                 }
             }
