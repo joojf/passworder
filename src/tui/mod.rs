@@ -467,8 +467,7 @@ fn render_passphrase(frame: &mut Frame, area: Rect, state: &AppState) {
             Style::default().fg(Color::DarkGray).italic(),
         ))
     };
-    let output =
-        Paragraph::new(output_line).block(rounded_block("Generated Passphrase"));
+    let output = Paragraph::new(output_line).block(rounded_block("Generated Passphrase"));
     frame.render_widget(output, chunks[1]);
 }
 
@@ -506,7 +505,10 @@ fn render_entropy(frame: &mut Frame, area: Rect, state: &AppState) {
         Line::from(""),
         Line::from(vec![
             Span::styled(" [Ctrl+m]", Style::default().fg(Color::Cyan).bold()),
-            Span::styled(format!(" toggle mask ({})", mask_label), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!(" toggle mask ({})", mask_label),
+                Style::default().fg(Color::DarkGray),
+            ),
             Span::styled("   [Ctrl+r]", Style::default().fg(Color::Cyan).bold()),
             Span::styled(" reset", Style::default().fg(Color::DarkGray)),
         ]),
@@ -564,20 +566,44 @@ fn render_entropy(frame: &mut Frame, area: Rect, state: &AppState) {
                 Style::default().fg(Color::DarkGray).bold(),
             )));
             lines.push(Line::from(vec![
-                Span::styled("    Online (throttled)   ", Style::default().fg(Color::DarkGray)),
-                Span::styled(&ct.online_throttling_100_per_hour, Style::default().fg(Color::White)),
+                Span::styled(
+                    "    Online (throttled)   ",
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(
+                    &ct.online_throttling_100_per_hour,
+                    Style::default().fg(Color::White),
+                ),
             ]));
             lines.push(Line::from(vec![
-                Span::styled("    Online (unthrottled) ", Style::default().fg(Color::DarkGray)),
-                Span::styled(&ct.online_no_throttling_10_per_second, Style::default().fg(Color::White)),
+                Span::styled(
+                    "    Online (unthrottled) ",
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(
+                    &ct.online_no_throttling_10_per_second,
+                    Style::default().fg(Color::White),
+                ),
             ]));
             lines.push(Line::from(vec![
-                Span::styled("    Offline (slow hash)  ", Style::default().fg(Color::DarkGray)),
-                Span::styled(&ct.offline_slow_hashing_1e4_per_second, Style::default().fg(Color::White)),
+                Span::styled(
+                    "    Offline (slow hash)  ",
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(
+                    &ct.offline_slow_hashing_1e4_per_second,
+                    Style::default().fg(Color::White),
+                ),
             ]));
             lines.push(Line::from(vec![
-                Span::styled("    Offline (fast hash)  ", Style::default().fg(Color::DarkGray)),
-                Span::styled(&ct.offline_fast_hashing_1e10_per_second, Style::default().fg(Color::White)),
+                Span::styled(
+                    "    Offline (fast hash)  ",
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(
+                    &ct.offline_fast_hashing_1e10_per_second,
+                    Style::default().fg(Color::White),
+                ),
             ]));
         }
 
@@ -656,20 +682,18 @@ fn run_effects(state: &mut AppState, effects: Vec<Effect>, dev_seed: Option<u64>
                     }
                 }
             }
-            Effect::AnalyzeEntropy => {
-                match crate::entropy::analyze_str(&state.entropy.input) {
-                    Ok(report) => {
-                        state.entropy.report = Some(report);
-                        state.entropy.error = None;
-                        state.entropy.message = Some("Analyzed.".into());
-                    }
-                    Err(err) => {
-                        state.entropy.error = Some(err.to_string());
-                        state.entropy.message = None;
-                        state.entropy.report = None;
-                    }
+            Effect::AnalyzeEntropy => match crate::entropy::analyze_str(&state.entropy.input) {
+                Ok(report) => {
+                    state.entropy.report = Some(report);
+                    state.entropy.error = None;
+                    state.entropy.message = Some("Analyzed.".into());
                 }
-            }
+                Err(err) => {
+                    state.entropy.error = Some(err.to_string());
+                    state.entropy.message = None;
+                    state.entropy.report = None;
+                }
+            },
         }
     }
 }

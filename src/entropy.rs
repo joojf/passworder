@@ -82,7 +82,9 @@ pub fn analyze_str(input: &str) -> Result<EntropyReport, EntropyError> {
     let mut report = EntropyReport::new(length, estimate);
 
     #[cfg(feature = "strength")]
-    apply_strength(&mut report, input)?;
+    if !input.is_empty() {
+        apply_strength(&mut report, input)?;
+    }
 
     Ok(report)
 }
@@ -147,15 +149,9 @@ fn apply_strength(report: &mut EntropyReport, input: &str) -> Result<(), Entropy
     let ct = strength.crack_times();
     report.crack_times_display = Some(CrackTimesDisplayReport {
         online_throttling_100_per_hour: ct.online_throttling_100_per_hour().to_string(),
-        online_no_throttling_10_per_second: ct
-            .online_no_throttling_10_per_second()
-            .to_string(),
-        offline_slow_hashing_1e4_per_second: ct
-            .offline_slow_hashing_1e4_per_second()
-            .to_string(),
-        offline_fast_hashing_1e10_per_second: ct
-            .offline_fast_hashing_1e10_per_second()
-            .to_string(),
+        online_no_throttling_10_per_second: ct.online_no_throttling_10_per_second().to_string(),
+        offline_slow_hashing_1e4_per_second: ct.offline_slow_hashing_1e4_per_second().to_string(),
+        offline_fast_hashing_1e10_per_second: ct.offline_fast_hashing_1e10_per_second().to_string(),
     });
 
     Ok(())

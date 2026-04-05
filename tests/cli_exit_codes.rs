@@ -21,6 +21,7 @@ fn password_copy_flag_warns_if_clipboard_unavailable() {
 }
 
 #[test]
+#[cfg(not(feature = "strength"))]
 fn entropy_strength_fields_absent_without_feature() {
     let output = Command::cargo_bin("passworder")
         .expect("binary exists")
