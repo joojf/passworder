@@ -119,9 +119,10 @@ fn render(frame: &mut Frame, state: &AppState) {
     let tab_index = match state.route {
         crate::tui::state::Route::Password | crate::tui::state::Route::Splash => 0,
         crate::tui::state::Route::Passphrase => 1,
+        crate::tui::state::Route::Entropy => 2,
         crate::tui::state::Route::Home => 0,
     };
-    let tabs = Tabs::new(vec![" [p] Password ", " [w] Passphrase "])
+    let tabs = Tabs::new(vec![" [p] Password ", " [w] Passphrase ", " [e] Entropy "])
         .select(tab_index)
         .style(Style::default().fg(Color::DarkGray))
         .highlight_style(Style::default().fg(Color::Cyan).bold())
@@ -146,6 +147,7 @@ fn render(frame: &mut Frame, state: &AppState) {
         }
         crate::tui::state::Route::Password => render_password(frame, layout[1], state),
         crate::tui::state::Route::Passphrase => render_passphrase(frame, layout[1], state),
+        crate::tui::state::Route::Entropy => render_entropy(frame, layout[1], state),
     }
 
     // Status bar
@@ -170,18 +172,31 @@ fn render(frame: &mut Frame, state: &AppState) {
     frame.render_widget(status, layout[2]);
 
     // Keybind hints
-    let hints = Line::from(vec![
-        Span::styled(" q", Style::default().fg(Color::Cyan)),
-        Span::styled(" quit  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("g", Style::default().fg(Color::Cyan)),
-        Span::styled(" generate  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("c", Style::default().fg(Color::Cyan)),
-        Span::styled(" copy  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("+/-", Style::default().fg(Color::Cyan)),
-        Span::styled(" adjust  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("r", Style::default().fg(Color::Cyan)),
-        Span::styled(" reset", Style::default().fg(Color::DarkGray)),
-    ]);
+    let hints = if state.route == crate::tui::state::Route::Entropy {
+        Line::from(vec![
+            Span::styled(" q", Style::default().fg(Color::Cyan)),
+            Span::styled(" quit  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::styled(" analyze  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Ctrl+m", Style::default().fg(Color::Cyan)),
+            Span::styled(" mask  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Ctrl+r", Style::default().fg(Color::Cyan)),
+            Span::styled(" reset", Style::default().fg(Color::DarkGray)),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(" q", Style::default().fg(Color::Cyan)),
+            Span::styled(" quit  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("g", Style::default().fg(Color::Cyan)),
+            Span::styled(" generate  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("c", Style::default().fg(Color::Cyan)),
+            Span::styled(" copy  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("+/-", Style::default().fg(Color::Cyan)),
+            Span::styled(" adjust  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("r", Style::default().fg(Color::Cyan)),
+            Span::styled(" reset", Style::default().fg(Color::DarkGray)),
+        ])
+    };
     let hint_bar = Paragraph::new(hints).alignment(Alignment::Center);
     frame.render_widget(hint_bar, layout[3]);
 }
@@ -191,6 +206,7 @@ fn current_message(state: &AppState) -> Option<&str> {
         crate::tui::state::Route::Splash | crate::tui::state::Route::Home => None,
         crate::tui::state::Route::Password => state.password.message.as_deref(),
         crate::tui::state::Route::Passphrase => state.passphrase.message.as_deref(),
+        crate::tui::state::Route::Entropy => state.entropy.message.as_deref(),
     }
 }
 
@@ -199,6 +215,7 @@ fn current_error(state: &AppState) -> Option<&str> {
         crate::tui::state::Route::Splash | crate::tui::state::Route::Home => None,
         crate::tui::state::Route::Password => state.password.error.as_deref(),
         crate::tui::state::Route::Passphrase => state.passphrase.error.as_deref(),
+        crate::tui::state::Route::Entropy => state.entropy.error.as_deref(),
     }
 }
 
@@ -455,6 +472,127 @@ fn render_passphrase(frame: &mut Frame, area: Rect, state: &AppState) {
     frame.render_widget(output, chunks[1]);
 }
 
+fn render_entropy(frame: &mut Frame, area: Rect, state: &AppState) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(5), Constraint::Min(0)])
+        .split(area);
+
+    // Input section
+    let display_value = if state.entropy.input.is_empty() {
+        Span::styled(
+            "  type a string and press Enter to analyze",
+            Style::default().fg(Color::DarkGray).italic(),
+        )
+    } else if state.entropy.masked {
+        Span::styled(
+            format!("  {}", "*".repeat(state.entropy.input.chars().count())),
+            Style::default().fg(Color::White).bold(),
+        )
+    } else {
+        Span::styled(
+            format!("  {}", &state.entropy.input),
+            Style::default().fg(Color::White).bold(),
+        )
+    };
+
+    let mask_label = if state.entropy.masked {
+        "shown"
+    } else {
+        "hidden"
+    };
+    let input_lines = vec![
+        Line::from(display_value),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" [Ctrl+m]", Style::default().fg(Color::Cyan).bold()),
+            Span::styled(format!(" toggle mask ({})", mask_label), Style::default().fg(Color::DarkGray)),
+            Span::styled("   [Ctrl+r]", Style::default().fg(Color::Cyan).bold()),
+            Span::styled(" reset", Style::default().fg(Color::DarkGray)),
+        ]),
+    ];
+    let input_block = Paragraph::new(input_lines).block(rounded_block("Input"));
+    frame.render_widget(input_block, chunks[0]);
+
+    // Results section
+    if let Some(report) = &state.entropy.report {
+        let mut lines = vec![
+            Line::from(vec![
+                Span::styled("  Length          ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{}", report.length),
+                    Style::default().fg(Color::White).bold(),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("  Shannon bits    ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{}", report.shannon_bits_estimate),
+                    Style::default().fg(Color::Cyan).bold(),
+                ),
+            ]),
+        ];
+
+        if let Some(log10) = report.guesses_log10 {
+            lines.push(Line::from(vec![
+                Span::styled("  Guesses log10   ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{:.2}", log10),
+                    Style::default().fg(Color::White).bold(),
+                ),
+            ]));
+        }
+
+        if let Some(score) = report.score {
+            let (label, color) = match score {
+                0 => ("Very Weak (0/4)", Color::Red),
+                1 => ("Weak (1/4)", Color::LightRed),
+                2 => ("Fair (2/4)", Color::Yellow),
+                3 => ("Strong (3/4)", Color::LightGreen),
+                _ => ("Very Strong (4/4)", Color::Green),
+            };
+            lines.push(Line::from(vec![
+                Span::styled("  Score           ", Style::default().fg(Color::DarkGray)),
+                Span::styled(label, Style::default().fg(color).bold()),
+            ]));
+        }
+
+        if let Some(ct) = &report.crack_times_display {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "  Crack times",
+                Style::default().fg(Color::DarkGray).bold(),
+            )));
+            lines.push(Line::from(vec![
+                Span::styled("    Online (throttled)   ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&ct.online_throttling_100_per_hour, Style::default().fg(Color::White)),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("    Online (unthrottled) ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&ct.online_no_throttling_10_per_second, Style::default().fg(Color::White)),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("    Offline (slow hash)  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&ct.offline_slow_hashing_1e4_per_second, Style::default().fg(Color::White)),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("    Offline (fast hash)  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&ct.offline_fast_hashing_1e10_per_second, Style::default().fg(Color::White)),
+            ]));
+        }
+
+        let results = Paragraph::new(lines).block(rounded_block("Results"));
+        frame.render_widget(results, chunks[1]);
+    } else {
+        let placeholder = Paragraph::new(Span::styled(
+            "  results appear after analysis",
+            Style::default().fg(Color::DarkGray).italic(),
+        ))
+        .block(rounded_block("Results"));
+        frame.render_widget(placeholder, chunks[1]);
+    }
+}
+
 fn run_effects(state: &mut AppState, effects: Vec<Effect>, dev_seed: Option<u64>) {
     for effect in effects {
         match effect {
@@ -515,6 +653,20 @@ fn run_effects(state: &mut AppState, effects: Vec<Effect>, dev_seed: Option<u64>
                     Err(err) => {
                         state.passphrase.error = Some(err);
                         state.passphrase.message = None;
+                    }
+                }
+            }
+            Effect::AnalyzeEntropy => {
+                match crate::entropy::analyze_str(&state.entropy.input) {
+                    Ok(report) => {
+                        state.entropy.report = Some(report);
+                        state.entropy.error = None;
+                        state.entropy.message = Some("Analyzed.".into());
+                    }
+                    Err(err) => {
+                        state.entropy.error = Some(err.to_string());
+                        state.entropy.message = None;
+                        state.entropy.report = None;
                     }
                 }
             }
