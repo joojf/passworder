@@ -52,7 +52,7 @@ pub fn vault_item_json(item: &vault::VaultItemV1, reveal: bool) -> serde_json::V
             "username": item.username.as_deref(),
             "secret_redacted": true,
             "urls": &item.urls,
-            "notes": item.notes.as_deref(),
+            "notes_redacted": item.notes.is_some(),
             "created_at": item.created_at,
             "updated_at": item.updated_at,
         })
@@ -77,7 +77,10 @@ pub fn vault_item_text(item: &vault::VaultItemV1, reveal: bool) -> String {
         out.push_str(&format!("urls:\t{}\n", item.urls.join(",")));
     }
     if let Some(notes) = &item.notes {
-        out.push_str(&format!("notes:\t{}\n", notes));
+        out.push_str(&format!(
+            "notes:\t{}\n",
+            if reveal { notes } else { "[REDACTED]" }
+        ));
     }
     out.push_str(&format!(
         "secret:\t{}\n",

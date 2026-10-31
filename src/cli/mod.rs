@@ -56,8 +56,8 @@ pub enum Commands {
     Passphrase(PassphraseArgs),
     #[command(subcommand_required = true, about = "Generate random tokens.")]
     Token(TokenArgs),
-    #[command(about = "Estimate entropy for a given input string.")]
-    Entropy(EntropyArgs),
+    #[command(about = "Estimate entropy for input read from STDIN.")]
+    Entropy,
     #[command(
         subcommand_required = true,
         about = "Manage reusable password profiles."
@@ -65,11 +65,11 @@ pub enum Commands {
     Profile(ProfileArgs),
     #[command(subcommand_required = true, about = "Manage a local encrypted vault.")]
     Vault(VaultArgs),
-    #[command(about = "Emit environment variables from the vault (guarded).")]
+    #[command(about = "Emit environment variables from the vault.")]
     Env(EnvArgs),
-    #[command(about = "Run a command with environment injected from the vault (guarded).")]
+    #[command(about = "Run a command with environment injected from the vault.")]
     Run(RunArgs),
-    #[command(about = "Inject secrets into a template file (guarded).")]
+    #[command(about = "Inject secrets into a template file.")]
     Inject(InjectArgs),
 }
 
@@ -129,12 +129,6 @@ pub struct EnvArgs {
     #[arg(long, value_name = "FORMAT", value_enum, help = "Output format.")]
     pub format: EnvFormat,
 
-    #[arg(
-        long = "unsafe",
-        help = "Required to print secrets or write them to disk; acknowledge CI/logging risks."
-    )]
-    pub unsafe_mode: bool,
-
     #[command(flatten)]
     pub vault: VaultPathOverrideArgs,
 }
@@ -147,12 +141,6 @@ pub struct RunArgs {
         help = "Profile name (matches vault item `path`)."
     )]
     pub profile: String,
-
-    #[arg(
-        long = "unsafe",
-        help = "Allow running in CI / non-interactive contexts where env may be logged."
-    )]
-    pub unsafe_mode: bool,
 
     #[command(flatten)]
     pub vault: VaultPathOverrideArgs,
@@ -181,12 +169,6 @@ pub struct InjectArgs {
 
     #[arg(long = "out", value_name = "FILE", help = "Output file path.")]
     pub output: PathBuf,
-
-    #[arg(
-        long = "unsafe",
-        help = "Required to print secrets or write them to disk; acknowledge CI/logging risks."
-    )]
-    pub unsafe_mode: bool,
 
     #[arg(long, help = "Overwrite output file if it already exists.")]
     pub force: bool,
@@ -232,13 +214,6 @@ pub struct VaultAddArgs {
 
     #[arg(long, value_name = "USERNAME", help = "Optional username.")]
     pub username: Option<String>,
-
-    #[arg(
-        long,
-        value_name = "SECRET",
-        help = "Secret value (avoid using this in shell history when possible)."
-    )]
-    pub secret: Option<String>,
 
     #[arg(long = "url", value_name = "URL", action = clap::ArgAction::Append, help = "Associated URL (repeatable).")]
     pub urls: Vec<String>,
@@ -291,12 +266,8 @@ pub struct VaultEditArgs {
     #[arg(long, conflicts_with = "username", help = "Clear username.")]
     pub clear_username: bool,
 
-    #[arg(
-        long,
-        value_name = "SECRET",
-        help = "Update secret (avoid shell history)."
-    )]
-    pub secret: Option<String>,
+    #[arg(long, help = "Prompt for a new secret.")]
+    pub new_secret: bool,
 
     #[arg(long = "url", value_name = "URL", action = clap::ArgAction::Append, help = "Replace URLs (repeatable).")]
     pub urls: Vec<String>,
@@ -615,14 +586,4 @@ pub struct TokenBytesArgs {
 pub struct TokenArgs {
     #[command(subcommand)]
     pub command: TokenCommands,
-}
-
-#[derive(Debug, Args)]
-pub struct EntropyArgs {
-    #[arg(
-        long,
-        value_name = "STRING",
-        help = "Input string to analyze; falls back to STDIN when omitted."
-    )]
-    pub input: Option<String>,
 }

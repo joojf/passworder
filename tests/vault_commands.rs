@@ -100,12 +100,10 @@ fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
             "github",
             "--username",
             "octocat",
-            "--secret",
-            "s3cr3t",
             "--tag",
             "work",
         ])
-        .write_stdin("pw\n")
+        .write_stdin("pw\ns3cr3t\n")
         .output()
         .expect("vault add output");
     assert!(add.status.success());
@@ -320,8 +318,6 @@ fn vault_edit_keeps_sets_and_clears_optional_fields() {
             "login",
             "--name",
             "github",
-            "--secret",
-            "s3cr3t",
             "--item-path",
             "work",
             "--username",
@@ -333,7 +329,7 @@ fn vault_edit_keeps_sets_and_clears_optional_fields() {
             "--url",
             "https://github.com",
         ])
-        .write_stdin("pw\n")
+        .write_stdin("pw\ns3cr3t\n")
         .output()
         .expect("vault add output");
     assert!(add.status.success());
@@ -350,7 +346,7 @@ fn vault_edit_keeps_sets_and_clears_optional_fields() {
         assert!(edited.status.success());
 
         let get = common::passworder(home.path())
-            .args(["vault", "get", id, "--json"])
+            .args(["vault", "get", id, "--json", "--reveal"])
             .write_stdin("pw\n")
             .output()
             .expect("vault get output");
@@ -407,6 +403,93 @@ fn vault_edit_keeps_sets_and_clears_optional_fields() {
             "{field} blank"
         );
     }
+}
+
+#[test]
+fn vault_get_hides_notes_unless_revealed() {
+    let home = tempfile::tempdir().expect("temp home");
+    let id = init_with_login(home.path());
+
+    let get = |flags: &[&str]| -> String {
+        let output = common::passworder(home.path())
+            .args(["vault", "get", id.as_str()])
+            .args(flags)
+            .write_stdin("pw\n")
+            .output()
+            .expect("vault get output");
+        assert!(output.status.success());
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    };
+
+    for flags in [&[][..], &["--json"], &["--quiet"], &["--reveal", "--quiet"]] {
+        assert!(!get(flags).contains("private-note"), "{flags:?}");
+    }
+    assert!(get(&[]).contains("notes:\t[REDACTED]"));
+    let json: Value = serde_json::from_str(&get(&["--json"])).expect("valid json");
+    assert_eq!(json["meta"]["item"]["notes_redacted"], true);
+
+    assert!(get(&["--reveal"]).contains("notes:\tprivate-note"));
+    let json: Value = serde_json::from_str(&get(&["--reveal", "--json"])).expect("valid json");
+    assert_eq!(json["meta"]["item"]["notes"], "private-note");
+}
+
+#[test]
+fn vault_edit_new_secret_prompts_after_the_password_is_checked() {
+    let home = tempfile::tempdir().expect("temp home");
+    let id = init_with_login(home.path());
+
+    let wrong = common::passworder(home.path())
+        .args(["vault", "edit", id.as_str(), "--new-secret"])
+        .write_stdin("wrong\nnew-value\n")
+        .output()
+        .expect("vault edit output");
+    assert_eq!(wrong.status.code(), Some(64));
+    assert!(!String::from_utf8_lossy(&wrong.stderr).contains("New secret:"));
+
+    let edit = common::passworder(home.path())
+        .args(["vault", "edit", id.as_str(), "--new-secret"])
+        .write_stdin("pw\nnew-value\n")
+        .output()
+        .expect("vault edit output");
+    assert!(edit.status.success());
+
+    let reveal = common::passworder(home.path())
+        .args(["vault", "get", id.as_str(), "--reveal", "--quiet"])
+        .write_stdin("pw\n")
+        .output()
+        .expect("vault get output");
+    assert_eq!(
+        String::from_utf8_lossy(&reveal.stdout).trim_end(),
+        "new-value"
+    );
+}
+
+fn init_with_login(home: &std::path::Path) -> String {
+    let init = common::passworder(home)
+        .env("PASSWORDER_VAULT_TEST_KDF", "1")
+        .args(["vault", "init"])
+        .write_stdin("pw\npw\n")
+        .output()
+        .expect("vault init output");
+    assert!(init.status.success());
+
+    let add = common::passworder(home)
+        .args([
+            "vault",
+            "add",
+            "--quiet",
+            "--type",
+            "login",
+            "--name",
+            "github",
+            "--notes",
+            "private-note",
+        ])
+        .write_stdin("pw\ns3cr3t\n")
+        .output()
+        .expect("vault add output");
+    assert!(add.status.success());
+    String::from_utf8_lossy(&add.stdout).trim_end().to_string()
 }
 
 fn token(name: &str) -> AddItemInput {

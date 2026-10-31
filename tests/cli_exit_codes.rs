@@ -25,7 +25,8 @@ fn password_copy_flag_warns_if_clipboard_unavailable() {
 fn entropy_strength_fields_absent_without_feature() {
     let output = Command::cargo_bin("passworder")
         .expect("binary exists")
-        .args(["entropy", "--input", "abc"])
+        .arg("entropy")
+        .write_stdin("abc")
         .output()
         .expect("entropy output");
 
@@ -122,13 +123,49 @@ fn help_and_errors_avoid_ansi_in_pipes() {
 }
 
 #[test]
-fn entropy_input_success() {
+fn entropy_stdin_success() {
     Command::cargo_bin("passworder")
         .expect("binary exists")
-        .args(["entropy", "--input", "abc"])
+        .arg("entropy")
+        .write_stdin("abc")
         .assert()
         .success()
         .stdout(predicate::str::contains("\"length\":3"));
+}
+
+#[test]
+fn flags_that_expose_or_skip_protecting_secrets_are_rejected() {
+    let id = "00000000-0000-0000-0000-000000000000";
+
+    for args in [
+        &[
+            "vault", "add", "--type", "login", "--name", "x", "--secret", "v",
+        ][..],
+        &["vault", "edit", id, "--secret", "v"],
+        &["entropy", "--input", "v"],
+        &["env", "--profile", "dev", "--format", "bash", "--unsafe"],
+        &["run", "--profile", "dev", "--unsafe", "--", "true"],
+        &[
+            "inject",
+            "--profile",
+            "dev",
+            "--in",
+            "a",
+            "--out",
+            "b",
+            "--unsafe",
+        ],
+    ] {
+        let output = Command::cargo_bin("passworder")
+            .expect("binary exists")
+            .args(args)
+            .output()
+            .expect("command output");
+
+        assert_eq!(output.status.code(), Some(64), "{args:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("unexpected argument"), "{args:?}: {stderr}");
+    }
 }
 
 fn temp_config_path() -> (tempfile::TempDir, std::path::PathBuf) {

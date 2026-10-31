@@ -6,7 +6,7 @@ use serde_json::Value;
 use std::fs;
 
 #[test]
-fn env_outputs_bash_and_json_and_is_guarded() {
+fn env_outputs_bash_and_json() {
     let home = tempfile::tempdir().expect("temp home");
 
     let init = common::passworder(home.path())
@@ -25,12 +25,10 @@ fn env_outputs_bash_and_json_and_is_guarded() {
             "api-token",
             "--name",
             "API_KEY",
-            "--secret",
-            "abc123",
             "--item-path",
             "dev",
         ])
-        .write_stdin("pw\n")
+        .write_stdin("pw\nabc123\n")
         .output()
         .expect("vault add");
     assert!(add1.status.success());
@@ -43,25 +41,16 @@ fn env_outputs_bash_and_json_and_is_guarded() {
             "api-token",
             "--name",
             "OAUTH_TOKEN",
-            "--secret",
-            "sek'ret",
             "--item-path",
             "dev",
         ])
-        .write_stdin("pw\n")
+        .write_stdin("pw\nsek'ret\n")
         .output()
         .expect("vault add");
     assert!(add2.status.success());
 
-    let guarded = common::passworder(home.path())
-        .args(["env", "--profile", "dev", "--format", "bash"])
-        .write_stdin("pw\n")
-        .output()
-        .expect("env output");
-    assert_eq!(guarded.status.code(), Some(64));
-
     let bash = common::passworder(home.path())
-        .args(["env", "--profile", "dev", "--format", "bash", "--unsafe"])
+        .args(["env", "--profile", "dev", "--format", "bash"])
         .write_stdin("pw\n")
         .output()
         .expect("env bash output");
@@ -71,7 +60,7 @@ fn env_outputs_bash_and_json_and_is_guarded() {
     assert!(stdout.contains("export OAUTH_TOKEN='sek'\\''ret'\n"));
 
     let json = common::passworder(home.path())
-        .args(["env", "--profile", "dev", "--format", "json", "--unsafe"])
+        .args(["env", "--profile", "dev", "--format", "json"])
         .write_stdin("pw\n")
         .output()
         .expect("env json output");
@@ -106,12 +95,10 @@ fn run_injects_env_and_inject_substitutes_template() {
             "api-token",
             "--name",
             "API_KEY",
-            "--secret",
-            "abc123",
             "--item-path",
             "dev",
         ])
-        .write_stdin("pw\n")
+        .write_stdin("pw\nabc123\n")
         .output()
         .expect("vault add");
     assert!(add.status.success());
@@ -121,7 +108,6 @@ fn run_injects_env_and_inject_substitutes_template() {
             "run",
             "--profile",
             "dev",
-            "--unsafe",
             "--",
             "sh",
             "-c",
@@ -145,7 +131,6 @@ fn run_injects_env_and_inject_substitutes_template() {
             template_path.to_str().unwrap(),
             "--out",
             out_path.to_str().unwrap(),
-            "--unsafe",
         ])
         .write_stdin("pw\n")
         .output()

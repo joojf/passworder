@@ -105,15 +105,20 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 }
             };
 
-            let secret = match args.secret {
-                Some(s) => s.into(),
-                None => match vault::prompt_secret("Secret: ") {
-                    Ok(s) => s,
-                    Err(error) => {
-                        eprintln!("Error: {error}");
-                        return exit_codes::exit_code_for_vault_prompt_error(&error);
-                    }
-                },
+            let unlocked = match vault::UnlockedVault::open(&path, &master_password) {
+                Ok(unlocked) => unlocked,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_codes::exit_code_for_vault_error(&error);
+                }
+            };
+
+            let secret = match vault::prompt_secret("Secret: ") {
+                Ok(secret) => secret,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_codes::exit_code_for_vault_prompt_error(&error);
+                }
             };
 
             let input = vault::AddItemInput {
@@ -127,9 +132,7 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 notes: args.notes,
             };
 
-            match vault::UnlockedVault::open(&path, &master_password)
-                .and_then(|v| v.add_item(input))
-            {
+            match unlocked.add_item(input) {
                 Ok(id) => {
                     let value = id.to_string();
                     let meta = json!({
@@ -233,6 +236,26 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 }
             };
 
+            let unlocked = match vault::UnlockedVault::open(&path, &master_password) {
+                Ok(unlocked) => unlocked,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_codes::exit_code_for_vault_error(&error);
+                }
+            };
+
+            let secret = if args.new_secret {
+                match vault::prompt_secret("New secret: ") {
+                    Ok(secret) => Some(secret),
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        return exit_codes::exit_code_for_vault_prompt_error(&error);
+                    }
+                }
+            } else {
+                None
+            };
+
             let input = vault::EditItemInput {
                 id: args.id,
                 item_type: args.item_type,
@@ -256,7 +279,7 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                     args.username
                         .map_or(vault::Change::Keep, vault::Change::Set)
                 },
-                secret: args.secret.map(Into::into),
+                secret,
                 urls: if args.clear_urls {
                     Some(Vec::new())
                 } else if args.urls.is_empty() {
@@ -271,9 +294,7 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 },
             };
 
-            match vault::UnlockedVault::open(&path, &master_password)
-                .and_then(|v| v.edit_item(input))
-            {
+            match unlocked.edit_item(input) {
                 Ok(()) => {
                     let value = args.id.to_string();
                     let meta = json!({

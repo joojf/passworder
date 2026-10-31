@@ -1,11 +1,10 @@
 use crate::app::AppContext;
-use crate::{cli, entropy, exit_codes, output};
+use crate::{entropy, exit_codes, output};
 use serde_json::json;
 use std::process::ExitCode;
 
-pub fn run(args: cli::EntropyArgs, ctx: &AppContext) -> ExitCode {
-    let config = entropy::EntropyConfig { input: args.input };
-    match entropy::analyze(config) {
+pub fn run(ctx: &AppContext) -> ExitCode {
+    match entropy::analyze() {
         Ok(report) => {
             if ctx.output_mode.json {
                 let meta_report = serde_json::from_str(&report).unwrap_or_else(|_| {

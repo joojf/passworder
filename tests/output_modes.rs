@@ -44,7 +44,8 @@ fn password_quiet_mode_prints_raw_value() {
 fn entropy_json_mode_wraps_existing_report() {
     let output = Command::cargo_bin("passworder")
         .expect("binary exists")
-        .args(["entropy", "--input", "abc", "--json"])
+        .args(["entropy", "--json"])
+        .write_stdin("abc")
         .output()
         .expect("entropy json output");
 

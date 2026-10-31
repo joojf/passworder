@@ -33,11 +33,6 @@ impl std::error::Error for EntropyError {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct EntropyConfig {
-    pub input: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntropyReport {
     pub length: usize,
@@ -62,9 +57,9 @@ impl EntropyReport {
     }
 }
 
-pub fn analyze(config: EntropyConfig) -> Result<String, EntropyError> {
+pub fn analyze() -> Result<String, EntropyError> {
     let mut stdin = std::io::stdin().lock();
-    analyze_with_reader(config, &mut stdin)
+    analyze_with_reader(&mut stdin)
 }
 
 pub fn analyze_str(input: &str) -> Result<EntropyReport, EntropyError> {
@@ -89,15 +84,8 @@ pub fn analyze_str(input: &str) -> Result<EntropyReport, EntropyError> {
     Ok(report)
 }
 
-fn analyze_with_reader<R: Read>(
-    config: EntropyConfig,
-    reader: &mut R,
-) -> Result<String, EntropyError> {
-    let input = match config.input {
-        Some(input) => input,
-        None => read_from_reader(reader)?,
-    };
-
+fn analyze_with_reader<R: Read>(reader: &mut R) -> Result<String, EntropyError> {
+    let input = read_from_reader(reader)?;
     let report = analyze_str(&input)?;
     serde_json::to_string(&report).map_err(EntropyError::Serialization)
 }
@@ -162,17 +150,13 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
-    fn analyze_with_input(input: Option<&str>) -> String {
-        let config = EntropyConfig {
-            input: input.map(|s| s.to_string()),
-        };
-        let mut cursor = Cursor::new(Vec::<u8>::new());
-        analyze_with_reader(config, &mut cursor).expect("analysis to succeed")
+    fn analyze_with_input(input: &str) -> String {
+        analyze_with_reader(&mut Cursor::new(input)).expect("analysis to succeed")
     }
 
     #[test]
     fn empty_input_reports_zero() {
-        let report = analyze_with_input(Some(""));
+        let report = analyze_with_input("");
         let value: EntropyReport = serde_json::from_str(&report).unwrap();
         assert_eq!(value.length, 0);
         assert_eq!(value.shannon_bits_estimate, 0.0);
@@ -183,7 +167,7 @@ mod tests {
 
     #[test]
     fn repeated_chars_have_zero_entropy() {
-        let report = analyze_with_input(Some("aaaaaa"));
+        let report = analyze_with_input("aaaaaa");
         let value: EntropyReport = serde_json::from_str(&report).unwrap();
         assert_eq!(value.length, 6);
         assert_eq!(value.shannon_bits_estimate, 0.0);
@@ -191,7 +175,7 @@ mod tests {
 
     #[test]
     fn mixed_chars_calculate_entropy() {
-        let report = analyze_with_input(Some("abcabc"));
+        let report = analyze_with_input("abcabc");
         let value: EntropyReport = serde_json::from_str(&report).unwrap();
         assert_eq!(value.length, 6);
         // probabilities (a,b,c) = 1/3 each -> entropy per char = log2(3) ~= 1.58496
@@ -201,19 +185,8 @@ mod tests {
 
     #[test]
     fn stdin_invalid_utf8_errors() {
-        let config = EntropyConfig { input: None };
         let mut reader = Cursor::new(vec![0xf0, 0x28, 0x8c, 0x28]); // invalid UTF-8
-        let err = analyze_with_reader(config, &mut reader).unwrap_err();
+        let err = analyze_with_reader(&mut reader).unwrap_err();
         assert!(matches!(err, EntropyError::InvalidUtf8));
-    }
-
-    #[test]
-    fn stdin_utf8_reads_successfully() {
-        let config = EntropyConfig { input: None };
-        let data = "hi".as_bytes().to_vec();
-        let mut reader = Cursor::new(data);
-        let result = analyze_with_reader(config, &mut reader).expect("analysis");
-        let parsed: EntropyReport = serde_json::from_str(&result).unwrap();
-        assert_eq!(parsed.length, 2);
     }
 }
