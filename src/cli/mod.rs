@@ -106,7 +106,7 @@ pub struct VaultPathOverrideArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Override the vault path (defaults to ~/Library/Application Support/passworder/vault.pwder)."
+        help = "Override the vault path (defaults to passworder/vault.pwder in the user config directory)."
     )]
     pub path: Option<PathBuf>,
 }
