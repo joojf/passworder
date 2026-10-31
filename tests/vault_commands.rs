@@ -2,6 +2,8 @@
 
 mod common;
 
+use passworder::vault::{AddItemInput, UnlockedVault, VaultError, VaultItemType};
+use secrecy::SecretString;
 use serde_json::Value;
 use std::fs;
 
@@ -215,4 +217,71 @@ fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
             .and_then(Value::as_u64),
         Some(0)
     );
+}
+
+#[test]
+fn vault_search_with_blank_query_returns_nothing_without_opening_the_vault() {
+    let home = tempfile::tempdir().expect("temp home");
+
+    let search = common::passworder(home.path())
+        .args(["vault", "search", "  ", "--json"])
+        .write_stdin("pw\n")
+        .output()
+        .expect("vault search output");
+
+    assert!(search.status.success());
+    let json: Value = serde_json::from_slice(&search.stdout).expect("valid json");
+    assert_eq!(json["meta"]["count"], 0);
+}
+
+#[test]
+fn unlocked_vault_handles_see_each_others_writes() {
+    let home = tempfile::tempdir().expect("temp home");
+    let path = expected_default_vault_path(home.path());
+    let password = SecretString::from("pw");
+
+    let init = common::passworder(home.path())
+        .env("PASSWORDER_VAULT_TEST_KDF", "1")
+        .args(["vault", "init"])
+        .write_stdin("pw\npw\n")
+        .output()
+        .expect("vault init output");
+    assert!(init.status.success());
+
+    let first = UnlockedVault::open(&path, &password).expect("open first handle");
+    let second = UnlockedVault::open(&path, &password).expect("open second handle");
+
+    let first_id = first.add_item(token("FIRST")).expect("add through first");
+    let second_id = second
+        .add_item(token("SECOND"))
+        .expect("add through second");
+    second
+        .get_item(first_id)
+        .expect("second sees first's write");
+    first
+        .get_item(second_id)
+        .expect("first sees second's write");
+
+    // A new unlock proves the writes still match the master password.
+    let reopened = UnlockedVault::open(&path, &password).expect("reopen with password");
+    assert_eq!(reopened.list_items().expect("list items").len(), 2);
+
+    let wrong = SecretString::from("wrong");
+    assert!(matches!(
+        UnlockedVault::open(&path, &wrong),
+        Err(VaultError::AuthFailed)
+    ));
+}
+
+fn token(name: &str) -> AddItemInput {
+    AddItemInput {
+        item_type: VaultItemType::ApiToken,
+        name: name.to_string(),
+        path: None,
+        tags: Vec::new(),
+        username: None,
+        secret: "s3cr3t".to_string(),
+        urls: Vec::new(),
+        notes: None,
+    }
 }
