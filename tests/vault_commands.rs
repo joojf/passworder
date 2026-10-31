@@ -1,22 +1,24 @@
-use assert_cmd::Command;
+#![cfg(any(target_os = "linux", target_os = "macos"))]
+
+mod common;
+
 use serde_json::Value;
 use std::fs;
 
-#[cfg(target_os = "macos")]
 fn expected_default_vault_path(home: &std::path::Path) -> std::path::PathBuf {
-    home.join("Library/Application Support")
-        .join("passworder")
-        .join("vault.pwder")
+    let config_dir = if cfg!(target_os = "macos") {
+        home.join("Library/Application Support")
+    } else {
+        home.join(".config")
+    };
+    config_dir.join("passworder").join("vault.pwder")
 }
 
 #[test]
-#[cfg(target_os = "macos")]
 fn vault_path_json_reports_default_path() {
     let home = tempfile::tempdir().expect("temp home");
 
-    let output = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let output = common::passworder(home.path())
         .args(["vault", "path", "--json"])
         .output()
         .expect("vault path output");
@@ -35,14 +37,11 @@ fn vault_path_json_reports_default_path() {
 }
 
 #[test]
-#[cfg(target_os = "macos")]
 fn vault_init_creates_vault_and_status_is_locked() {
     let home = tempfile::tempdir().expect("temp home");
     let expected = expected_default_vault_path(home.path());
 
-    let status_before = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let status_before = common::passworder(home.path())
         .args(["vault", "status", "--json"])
         .output()
         .expect("vault status output");
@@ -52,9 +51,7 @@ fn vault_init_creates_vault_and_status_is_locked() {
     let json: Value = serde_json::from_str(&stdout).expect("valid json");
     assert_eq!(json.get("value").and_then(Value::as_str), Some("missing"));
 
-    let init = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let init = common::passworder(home.path())
         .env("PASSWORDER_VAULT_TEST_KDF", "1")
         .args(["vault", "init", "--json"])
         .write_stdin("correct horse battery staple\ncorrect horse battery staple\n")
@@ -67,9 +64,7 @@ fn vault_init_creates_vault_and_status_is_locked() {
     let bytes = fs::read(&expected).expect("read vault bytes");
     assert!(bytes.starts_with(b"PWDERVLT"));
 
-    let status_after = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let status_after = common::passworder(home.path())
         .args(["vault", "status", "--json"])
         .output()
         .expect("vault status output");
@@ -81,13 +76,10 @@ fn vault_init_creates_vault_and_status_is_locked() {
 }
 
 #[test]
-#[cfg(target_os = "macos")]
 fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
     let home = tempfile::tempdir().expect("temp home");
 
-    let init = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let init = common::passworder(home.path())
         .env("PASSWORDER_VAULT_TEST_KDF", "1")
         .args(["vault", "init", "--json"])
         .write_stdin("pw\npw\n")
@@ -95,9 +87,7 @@ fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
         .expect("vault init output");
     assert!(init.status.success());
 
-    let add = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let add = common::passworder(home.path())
         .args([
             "vault",
             "add",
@@ -126,9 +116,7 @@ fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
         .and_then(Value::as_str)
         .expect("meta.id string");
 
-    let list = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let list = common::passworder(home.path())
         .args(["vault", "list", "--json"])
         .write_stdin("pw\n")
         .output()
@@ -144,9 +132,7 @@ fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].get("id").and_then(Value::as_str), Some(id));
 
-    let get = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let get = common::passworder(home.path())
         .args(["vault", "get", id, "--json"])
         .write_stdin("pw\n")
         .output()
@@ -163,9 +149,7 @@ fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
         Some(true)
     );
 
-    let reveal = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let reveal = common::passworder(home.path())
         .args(["vault", "get", id, "--reveal", "--quiet"])
         .write_stdin("pw\n")
         .output()
@@ -174,9 +158,7 @@ fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
     let stdout = String::from_utf8_lossy(&reveal.stdout);
     assert_eq!(stdout.trim_end_matches(&['\n', '\r'][..]), "s3cr3t");
 
-    let search = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let search = common::passworder(home.path())
         .args(["vault", "search", "git", "--json"])
         .write_stdin("pw\n")
         .output()
@@ -191,18 +173,14 @@ fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
         Some(1)
     );
 
-    let edit = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let edit = common::passworder(home.path())
         .args(["vault", "edit", id, "--name", "github.com", "--json"])
         .write_stdin("pw\n")
         .output()
         .expect("vault edit output");
     assert!(edit.status.success());
 
-    let get_after = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let get_after = common::passworder(home.path())
         .args(["vault", "get", id, "--json"])
         .write_stdin("pw\n")
         .output()
@@ -216,18 +194,14 @@ fn vault_crud_roundtrip_add_get_list_search_edit_rm() {
         .expect("meta.item");
     assert_eq!(item.get("name").and_then(Value::as_str), Some("github.com"));
 
-    let rm = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let rm = common::passworder(home.path())
         .args(["vault", "rm", id, "--json"])
         .write_stdin("pw\n")
         .output()
         .expect("vault rm output");
     assert!(rm.status.success());
 
-    let list_after = Command::cargo_bin("passworder")
-        .expect("binary exists")
-        .env("HOME", home.path())
+    let list_after = common::passworder(home.path())
         .args(["vault", "list", "--json"])
         .write_stdin("pw\n")
         .output()
