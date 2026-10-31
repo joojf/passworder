@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 const VAULT_ENV: &str = "PASSWORDER_VAULT";
 const APP_DIR: &str = "passworder";
@@ -145,7 +146,7 @@ pub struct AddItemInput {
     pub path: Option<String>,
     pub tags: Vec<String>,
     pub username: Option<String>,
-    pub secret: String,
+    pub secret: SecretString,
     pub urls: Vec<String>,
     pub notes: Option<String>,
 }
@@ -174,7 +175,7 @@ pub struct EditItemInput {
     /// `Some(vec![])` clears the tags.
     pub tags: Option<Vec<String>>,
     pub username: Change<String>,
-    pub secret: Option<String>,
+    pub secret: Option<SecretString>,
     /// `Some(vec![])` clears the URLs.
     pub urls: Option<Vec<String>>,
     pub notes: Change<String>,
@@ -398,7 +399,7 @@ fn seal_vault_v1(
     };
     let header_bytes = format_v1::encode_header_v1(&header);
 
-    let payload_json = serde_json::to_vec(payload)?;
+    let payload_json = Zeroizing::new(serde_json::to_vec(payload)?);
     let payload_ciphertext = crypto::encrypt_payload(&dek, &payload_nonce, &aad, &payload_json)?;
 
     let mut out = Vec::with_capacity(header_bytes.len() + payload_ciphertext.len());

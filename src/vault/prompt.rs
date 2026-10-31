@@ -35,12 +35,12 @@ pub fn prompt_master_password() -> Result<SecretString, PromptError> {
     Ok(SecretString::new(pw.into_boxed_str()))
 }
 
-pub fn prompt_secret(label: &str) -> Result<String, PromptError> {
+pub fn prompt_secret(label: &str) -> Result<SecretString, PromptError> {
     let value = read_secret_line(label)?;
     if value.is_empty() {
         return Err(PromptError::Empty);
     }
-    Ok(value)
+    Ok(value.into())
 }
 
 fn read_secret_line(prompt: &str) -> Result<String, PromptError> {

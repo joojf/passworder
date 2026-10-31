@@ -1,4 +1,5 @@
 use crate::vault;
+use secrecy::ExposeSecret;
 use std::collections::BTreeMap;
 use std::path::Path;
 use thiserror::Error;
@@ -25,7 +26,7 @@ pub fn env_vars_for_profile(
         if item.path.as_deref() != Some(profile) {
             continue;
         }
-        vars.insert(item.name.clone(), item.secret.clone());
+        vars.insert(item.name.clone(), item.secret.expose_secret().to_owned());
     }
 
     vars

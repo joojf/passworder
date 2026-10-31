@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use secrecy::{ExposeSecret, SecretString};
+use serde::{Deserialize, Serialize, Serializer};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
@@ -9,7 +10,7 @@ pub enum VaultItemType {
     ApiToken,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VaultItemV1 {
     #[serde(with = "uuid_as_string")]
     pub id: Uuid,
@@ -22,7 +23,8 @@ pub struct VaultItemV1 {
     pub tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
-    pub secret: String,
+    #[serde(serialize_with = "serialize_secret")]
+    pub secret: SecretString,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub urls: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -31,7 +33,7 @@ pub struct VaultItemV1 {
     pub updated_at: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VaultPayloadV1 {
     pub schema_version: u32,
     #[serde(default)]
@@ -45,6 +47,13 @@ impl Default for VaultPayloadV1 {
             items: Vec::new(),
         }
     }
+}
+
+fn serialize_secret<S: Serializer>(
+    secret: &SecretString,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(secret.expose_secret())
 }
 
 pub mod uuid_as_string {
@@ -64,5 +73,28 @@ pub mod uuid_as_string {
     {
         let s = String::deserialize(deserializer)?;
         Uuid::parse_str(&s).map_err(de::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_output_hides_the_secret() {
+        let item: VaultItemV1 = serde_json::from_str(
+            r#"{
+                "id": "00000000-0000-0000-0000-000000000000",
+                "type": "login",
+                "name": "github",
+                "secret": "s3cr3t",
+                "created_at": 0,
+                "updated_at": 0
+            }"#,
+        )
+        .expect("valid item");
+
+        assert!(!format!("{item:?}").contains("s3cr3t"));
+        assert_eq!(item.secret.expose_secret(), "s3cr3t");
     }
 }

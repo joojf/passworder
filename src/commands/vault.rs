@@ -3,6 +3,7 @@ use crate::{cli, exit_codes, output, vault};
 use output::vault_item::{
     vault_item_json, vault_item_summary_json, vault_item_summary_text, vault_item_text,
 };
+use secrecy::ExposeSecret;
 use serde_json::json;
 use std::process::ExitCode;
 
@@ -105,7 +106,7 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
             };
 
             let secret = match args.secret {
-                Some(s) => s,
+                Some(s) => s.into(),
                 None => match vault::prompt_secret("Secret: ") {
                     Ok(s) => s,
                     Err(error) => {
@@ -173,7 +174,9 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                     let reveal = args.reveal;
                     let copied = ctx.copy_requested;
 
-                    if copied && let Err(error) = output::copy_to_clipboard(&item.secret) {
+                    if copied
+                        && let Err(error) = output::copy_to_clipboard(item.secret.expose_secret())
+                    {
                         eprintln!("Error: {error}");
                         return ExitCode::from(exit_codes::EXIT_IO);
                     }
@@ -189,7 +192,12 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
 
                     if ctx.output_mode.quiet {
                         if reveal {
-                            output::print_value(item.secret, meta, &ctx.output_mode, false)
+                            output::print_value(
+                                item.secret.expose_secret().to_owned(),
+                                meta,
+                                &ctx.output_mode,
+                                false,
+                            )
                         } else {
                             output::print_value(item.id.to_string(), meta, &ctx.output_mode, false)
                         }
@@ -248,7 +256,7 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                     args.username
                         .map_or(vault::Change::Keep, vault::Change::Set)
                 },
-                secret: args.secret,
+                secret: args.secret.map(Into::into),
                 urls: if args.clear_urls {
                     Some(Vec::new())
                 } else if args.urls.is_empty() {
