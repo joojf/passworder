@@ -150,21 +150,34 @@ pub struct AddItemInput {
     pub notes: Option<String>,
 }
 
+pub enum Change<T> {
+    Keep,
+    Clear,
+    Set(T),
+}
+
+impl<T> Change<T> {
+    fn apply(self, field: &mut Option<T>) {
+        match self {
+            Change::Keep => {}
+            Change::Clear => *field = None,
+            Change::Set(value) => *field = Some(value),
+        }
+    }
+}
+
 pub struct EditItemInput {
     pub id: Uuid,
     pub item_type: Option<items::VaultItemType>,
     pub name: Option<String>,
-    pub path: Option<String>,
-    pub clear_path: bool,
+    pub path: Change<String>,
+    /// `Some(vec![])` clears the tags.
     pub tags: Option<Vec<String>>,
-    pub clear_tags: bool,
-    pub username: Option<String>,
-    pub clear_username: bool,
+    pub username: Change<String>,
     pub secret: Option<String>,
+    /// `Some(vec![])` clears the URLs.
     pub urls: Option<Vec<String>>,
-    pub clear_urls: bool,
-    pub notes: Option<String>,
-    pub clear_notes: bool,
+    pub notes: Change<String>,
 }
 
 /// Holds the KEK because every write generates a new DEK.
@@ -247,34 +260,18 @@ impl UnlockedVault {
             if let Some(name) = input.name {
                 item.name = name;
             }
-            if input.clear_path {
-                item.path = None;
-            } else if let Some(path) = input.path {
-                item.path = Some(path);
-            }
-            if input.clear_tags {
-                item.tags.clear();
-            } else if let Some(tags) = input.tags {
+            input.path.apply(&mut item.path);
+            if let Some(tags) = input.tags {
                 item.tags = normalize_tags(tags);
             }
-            if input.clear_username {
-                item.username = None;
-            } else if let Some(username) = input.username {
-                item.username = Some(username);
-            }
+            input.username.apply(&mut item.username);
             if let Some(secret) = input.secret {
                 item.secret = secret;
             }
-            if input.clear_urls {
-                item.urls.clear();
-            } else if let Some(urls) = input.urls {
+            if let Some(urls) = input.urls {
                 item.urls = normalize_urls(urls);
             }
-            if input.clear_notes {
-                item.notes = None;
-            } else if let Some(notes) = input.notes {
-                item.notes = Some(notes);
-            }
+            input.notes.apply(&mut item.notes);
 
             item.updated_at = now_unix_seconds();
             payload.items.sort_by(item_sort_cmp);

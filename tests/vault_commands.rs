@@ -273,6 +273,142 @@ fn unlocked_vault_handles_see_each_others_writes() {
     ));
 }
 
+#[test]
+fn vault_edit_rejects_clearing_and_setting_the_same_field() {
+    let home = tempfile::tempdir().expect("temp home");
+    let id = "00000000-0000-0000-0000-000000000000";
+
+    for flags in [
+        ["--clear-path", "--item-path"],
+        ["--clear-tags", "--tag"],
+        ["--clear-username", "--username"],
+        ["--clear-urls", "--url"],
+        ["--clear-notes", "--notes"],
+    ] {
+        let edit = common::passworder(home.path())
+            .args(["vault", "edit", id, flags[0], flags[1], "value"])
+            .output()
+            .expect("vault edit output");
+
+        assert_eq!(edit.status.code(), Some(64), "{flags:?}");
+        let stderr = String::from_utf8_lossy(&edit.stderr);
+        assert!(
+            stderr.contains("cannot be used with"),
+            "{flags:?}: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn vault_edit_keeps_sets_and_clears_optional_fields() {
+    let home = tempfile::tempdir().expect("temp home");
+
+    let init = common::passworder(home.path())
+        .env("PASSWORDER_VAULT_TEST_KDF", "1")
+        .args(["vault", "init"])
+        .write_stdin("pw\npw\n")
+        .output()
+        .expect("vault init output");
+    assert!(init.status.success());
+
+    let add = common::passworder(home.path())
+        .args([
+            "vault",
+            "add",
+            "--json",
+            "--type",
+            "login",
+            "--name",
+            "github",
+            "--secret",
+            "s3cr3t",
+            "--item-path",
+            "work",
+            "--username",
+            "octocat",
+            "--notes",
+            "old",
+            "--tag",
+            "dev",
+            "--url",
+            "https://github.com",
+        ])
+        .write_stdin("pw\n")
+        .output()
+        .expect("vault add output");
+    assert!(add.status.success());
+    let json: Value = serde_json::from_slice(&add.stdout).expect("valid json");
+    let id = json["meta"]["id"].as_str().expect("meta.id string");
+
+    let edit = |flags: &[&str]| -> Value {
+        let edited = common::passworder(home.path())
+            .args(["vault", "edit", id])
+            .args(flags)
+            .write_stdin("pw\n")
+            .output()
+            .expect("vault edit output");
+        assert!(edited.status.success());
+
+        let get = common::passworder(home.path())
+            .args(["vault", "get", id, "--json"])
+            .write_stdin("pw\n")
+            .output()
+            .expect("vault get output");
+        assert!(get.status.success());
+        let json: Value = serde_json::from_slice(&get.stdout).expect("valid json");
+        json["meta"]["item"].clone()
+    };
+
+    let item = edit(&["--notes", "new"]);
+    assert_eq!(item["notes"], "new");
+    assert_eq!(item["path"], "work");
+    assert_eq!(item["username"], "octocat");
+    assert_eq!(item["tags"][0], "dev");
+    assert_eq!(item["urls"][0], "https://github.com");
+
+    let item = edit(&[
+        "--clear-path",
+        "--clear-tags",
+        "--clear-username",
+        "--clear-urls",
+        "--clear-notes",
+    ]);
+    for field in ["path", "username", "notes"] {
+        assert!(item[field].is_null(), "{field} cleared");
+    }
+    for field in ["tags", "urls"] {
+        assert_eq!(
+            item[field].as_array().map(Vec::len),
+            Some(0),
+            "{field} cleared"
+        );
+    }
+
+    let item = edit(&[
+        "--item-path",
+        "home",
+        "--username",
+        "hubot",
+        "--tag",
+        "ops",
+        "--url",
+        "https://example.com",
+    ]);
+    assert_eq!(item["path"], "home");
+    assert_eq!(item["username"], "hubot");
+    assert_eq!(item["tags"][0], "ops");
+    assert_eq!(item["urls"][0], "https://example.com");
+
+    let item = edit(&["--tag", " ", "--url", " "]);
+    for field in ["tags", "urls"] {
+        assert_eq!(
+            item[field].as_array().map(Vec::len),
+            Some(0),
+            "{field} blank"
+        );
+    }
+}
+
 fn token(name: &str) -> AddItemInput {
     AddItemInput {
         item_type: VaultItemType::ApiToken,

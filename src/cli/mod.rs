@@ -278,17 +278,17 @@ pub struct VaultEditArgs {
 
     #[arg(long, value_name = "PATH", help = "Update item folder/path.")]
     pub item_path: Option<String>,
-    #[arg(long, help = "Clear folder/path.")]
+    #[arg(long, conflicts_with = "item_path", help = "Clear folder/path.")]
     pub clear_path: bool,
 
     #[arg(long = "tag", value_name = "TAG", action = clap::ArgAction::Append, help = "Replace tags (repeatable).")]
     pub tags: Vec<String>,
-    #[arg(long, help = "Clear tags.")]
+    #[arg(long, conflicts_with = "tags", help = "Clear tags.")]
     pub clear_tags: bool,
 
     #[arg(long, value_name = "USERNAME", help = "Update username.")]
     pub username: Option<String>,
-    #[arg(long, help = "Clear username.")]
+    #[arg(long, conflicts_with = "username", help = "Clear username.")]
     pub clear_username: bool,
 
     #[arg(
@@ -300,12 +300,12 @@ pub struct VaultEditArgs {
 
     #[arg(long = "url", value_name = "URL", action = clap::ArgAction::Append, help = "Replace URLs (repeatable).")]
     pub urls: Vec<String>,
-    #[arg(long, help = "Clear URLs.")]
+    #[arg(long, conflicts_with = "urls", help = "Clear URLs.")]
     pub clear_urls: bool,
 
     #[arg(long, value_name = "NOTES", help = "Update notes.")]
     pub notes: Option<String>,
-    #[arg(long, help = "Clear notes.")]
+    #[arg(long, conflicts_with = "notes", help = "Clear notes.")]
     pub clear_notes: bool,
 }
 

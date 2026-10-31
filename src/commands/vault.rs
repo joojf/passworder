@@ -229,25 +229,38 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 id: args.id,
                 item_type: args.item_type,
                 name: args.name,
-                path: args.item_path,
-                clear_path: args.clear_path,
-                tags: if args.tags.is_empty() {
+                path: if args.clear_path {
+                    vault::Change::Clear
+                } else {
+                    args.item_path
+                        .map_or(vault::Change::Keep, vault::Change::Set)
+                },
+                tags: if args.clear_tags {
+                    Some(Vec::new())
+                } else if args.tags.is_empty() {
                     None
                 } else {
                     Some(args.tags)
                 },
-                clear_tags: args.clear_tags,
-                username: args.username,
-                clear_username: args.clear_username,
+                username: if args.clear_username {
+                    vault::Change::Clear
+                } else {
+                    args.username
+                        .map_or(vault::Change::Keep, vault::Change::Set)
+                },
                 secret: args.secret,
-                urls: if args.urls.is_empty() {
+                urls: if args.clear_urls {
+                    Some(Vec::new())
+                } else if args.urls.is_empty() {
                     None
                 } else {
                     Some(args.urls)
                 },
-                clear_urls: args.clear_urls,
-                notes: args.notes,
-                clear_notes: args.clear_notes,
+                notes: if args.clear_notes {
+                    vault::Change::Clear
+                } else {
+                    args.notes.map_or(vault::Change::Keep, vault::Change::Set)
+                },
             };
 
             match vault::UnlockedVault::open(&path, &master_password)
