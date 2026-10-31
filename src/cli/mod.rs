@@ -58,8 +58,6 @@ pub enum Commands {
     Token(TokenArgs),
     #[command(about = "Estimate entropy for a given input string.")]
     Entropy(EntropyArgs),
-    #[command(about = "Launch the interactive TUI.")]
-    Tui,
     #[command(
         subcommand_required = true,
         about = "Manage reusable password profiles."
