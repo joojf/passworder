@@ -1,4 +1,5 @@
 use crate::vault;
+use secrecy::ExposeSecret;
 use serde_json::json;
 
 pub fn vault_item_summary_text(item: &vault::VaultItemV1) -> String {
@@ -35,7 +36,7 @@ pub fn vault_item_json(item: &vault::VaultItemV1, reveal: bool) -> serde_json::V
             "path": item.path.as_deref(),
             "tags": &item.tags,
             "username": item.username.as_deref(),
-            "secret": item.secret.as_str(),
+            "secret": item.secret.expose_secret(),
             "urls": &item.urls,
             "notes": item.notes.as_deref(),
             "created_at": item.created_at,
@@ -80,7 +81,11 @@ pub fn vault_item_text(item: &vault::VaultItemV1, reveal: bool) -> String {
     }
     out.push_str(&format!(
         "secret:\t{}\n",
-        if reveal { &item.secret } else { "[REDACTED]" }
+        if reveal {
+            item.secret.expose_secret()
+        } else {
+            "[REDACTED]"
+        }
     ));
     out.push_str(&format!("created_at:\t{}\n", item.created_at));
     out.push_str(&format!("updated_at:\t{}", item.updated_at));

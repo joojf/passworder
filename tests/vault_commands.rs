@@ -416,7 +416,7 @@ fn token(name: &str) -> AddItemInput {
         path: None,
         tags: Vec::new(),
         username: None,
-        secret: "s3cr3t".to_string(),
+        secret: "s3cr3t".into(),
         urls: Vec::new(),
         notes: None,
     }
