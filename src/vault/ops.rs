@@ -167,187 +167,156 @@ pub struct EditItemInput {
     pub clear_notes: bool,
 }
 
-pub fn vault_add_item_v1(
-    vault_path: &Path,
-    master_password: &SecretString,
-    input: AddItemInput,
-) -> Result<Uuid, VaultError> {
-    let _lock = io::VaultLock::acquire(
-        &io::lock_path_for_vault(vault_path),
-        io::LockMode::Exclusive,
-    )?;
-
-    let bytes = read_existing_vault_bytes_unlocked(vault_path)?;
-    let (mut payload, header) = load_payload_v1(&bytes, master_password)?;
-
-    let now = now_unix_seconds();
-    let id = Uuid::new_v4();
-    let item = items::VaultItemV1 {
-        id,
-        item_type: input.item_type,
-        name: input.name,
-        path: input.path,
-        tags: normalize_tags(input.tags),
-        username: input.username,
-        secret: input.secret,
-        urls: normalize_urls(input.urls),
-        notes: input.notes,
-        created_at: now,
-        updated_at: now,
-    };
-
-    payload.items.push(item);
-    payload.items.sort_by(item_sort_cmp);
-
-    let new_bytes = seal_vault_v1(
-        header.header.kdf_params,
-        header.header.kdf_salt,
-        master_password,
-        &payload,
-    )?;
-    io::write_vault_bytes_atomic_unlocked(vault_path, &new_bytes)?;
-    Ok(id)
+/// Holds the KEK because every write generates a new DEK.
+pub struct UnlockedVault {
+    path: PathBuf,
+    kek: crypto::SecretBytes,
 }
 
-pub fn vault_get_item_v1(
-    vault_path: &Path,
-    master_password: &SecretString,
-    id: Uuid,
-) -> Result<items::VaultItemV1, VaultError> {
-    let bytes = read_existing_vault_bytes(vault_path)?;
-    let (payload, _) = load_payload_v1(&bytes, master_password)?;
+impl UnlockedVault {
+    pub fn open(vault_path: &Path, master_password: &SecretString) -> Result<Self, VaultError> {
+        let bytes = read_existing_vault_bytes(vault_path)?;
+        let parsed = format_v1::parse_vault_v1(&bytes)?;
+        let kdf_out = crypto::derive_kdf_out_from_password(
+            master_password,
+            &parsed.header.kdf_salt,
+            parsed.header.kdf_params,
+        )?;
+        let kek = crypto::derive_kek(&kdf_out)?;
+        decrypt_payload_v1(&parsed, &kek)?;
 
-    payload
-        .items
-        .into_iter()
-        .find(|i| i.id == id)
-        .ok_or_else(|| VaultError::ItemNotFound(id.to_string()))
-}
-
-pub fn vault_list_items_v1(
-    vault_path: &Path,
-    master_password: &SecretString,
-) -> Result<Vec<items::VaultItemV1>, VaultError> {
-    let bytes = read_existing_vault_bytes(vault_path)?;
-    let (payload, _) = load_payload_v1(&bytes, master_password)?;
-    Ok(payload.items)
-}
-
-pub fn vault_search_items_v1(
-    vault_path: &Path,
-    master_password: &SecretString,
-    query: &str,
-) -> Result<Vec<items::VaultItemV1>, VaultError> {
-    let q = query.trim().to_lowercase();
-    if q.is_empty() {
-        return Ok(Vec::new());
+        Ok(Self {
+            path: vault_path.to_path_buf(),
+            kek,
+        })
     }
 
-    let bytes = read_existing_vault_bytes(vault_path)?;
-    let (payload, _) = load_payload_v1(&bytes, master_password)?;
-
-    let matches = payload
-        .items
-        .into_iter()
-        .filter(|item| item_matches_query(item, &q))
-        .collect::<Vec<_>>();
-    Ok(matches)
-}
-
-pub fn vault_edit_item_v1(
-    vault_path: &Path,
-    master_password: &SecretString,
-    input: EditItemInput,
-) -> Result<(), VaultError> {
-    let _lock = io::VaultLock::acquire(
-        &io::lock_path_for_vault(vault_path),
-        io::LockMode::Exclusive,
-    )?;
-
-    let bytes = read_existing_vault_bytes_unlocked(vault_path)?;
-    let (mut payload, header) = load_payload_v1(&bytes, master_password)?;
-
-    let item = payload
-        .items
-        .iter_mut()
-        .find(|i| i.id == input.id)
-        .ok_or_else(|| VaultError::ItemNotFound(input.id.to_string()))?;
-
-    if let Some(t) = input.item_type {
-        item.item_type = t;
-    }
-    if let Some(name) = input.name {
-        item.name = name;
-    }
-    if input.clear_path {
-        item.path = None;
-    } else if let Some(path) = input.path {
-        item.path = Some(path);
-    }
-    if input.clear_tags {
-        item.tags.clear();
-    } else if let Some(tags) = input.tags {
-        item.tags = normalize_tags(tags);
-    }
-    if input.clear_username {
-        item.username = None;
-    } else if let Some(username) = input.username {
-        item.username = Some(username);
-    }
-    if let Some(secret) = input.secret {
-        item.secret = secret;
-    }
-    if input.clear_urls {
-        item.urls.clear();
-    } else if let Some(urls) = input.urls {
-        item.urls = normalize_urls(urls);
-    }
-    if input.clear_notes {
-        item.notes = None;
-    } else if let Some(notes) = input.notes {
-        item.notes = Some(notes);
+    pub fn add_item(&self, input: AddItemInput) -> Result<Uuid, VaultError> {
+        self.update(|payload| {
+            let now = now_unix_seconds();
+            let id = Uuid::new_v4();
+            payload.items.push(items::VaultItemV1 {
+                id,
+                item_type: input.item_type,
+                name: input.name,
+                path: input.path,
+                tags: normalize_tags(input.tags),
+                username: input.username,
+                secret: input.secret,
+                urls: normalize_urls(input.urls),
+                notes: input.notes,
+                created_at: now,
+                updated_at: now,
+            });
+            payload.items.sort_by(item_sort_cmp);
+            Ok(id)
+        })
     }
 
-    item.updated_at = now_unix_seconds();
-
-    payload.items.sort_by(item_sort_cmp);
-    let new_bytes = seal_vault_v1(
-        header.header.kdf_params,
-        header.header.kdf_salt,
-        master_password,
-        &payload,
-    )?;
-    io::write_vault_bytes_atomic_unlocked(vault_path, &new_bytes)?;
-    Ok(())
-}
-
-pub fn vault_remove_item_v1(
-    vault_path: &Path,
-    master_password: &SecretString,
-    id: Uuid,
-) -> Result<(), VaultError> {
-    let _lock = io::VaultLock::acquire(
-        &io::lock_path_for_vault(vault_path),
-        io::LockMode::Exclusive,
-    )?;
-
-    let bytes = read_existing_vault_bytes_unlocked(vault_path)?;
-    let (mut payload, header) = load_payload_v1(&bytes, master_password)?;
-
-    let before = payload.items.len();
-    payload.items.retain(|i| i.id != id);
-    if payload.items.len() == before {
-        return Err(VaultError::ItemNotFound(id.to_string()));
+    pub fn get_item(&self, id: Uuid) -> Result<items::VaultItemV1, VaultError> {
+        self.list_items()?
+            .into_iter()
+            .find(|i| i.id == id)
+            .ok_or_else(|| VaultError::ItemNotFound(id.to_string()))
     }
 
-    let new_bytes = seal_vault_v1(
-        header.header.kdf_params,
-        header.header.kdf_salt,
-        master_password,
-        &payload,
-    )?;
-    io::write_vault_bytes_atomic_unlocked(vault_path, &new_bytes)?;
-    Ok(())
+    pub fn list_items(&self) -> Result<Vec<items::VaultItemV1>, VaultError> {
+        let bytes = read_existing_vault_bytes(&self.path)?;
+        let parsed = format_v1::parse_vault_v1(&bytes)?;
+        Ok(decrypt_payload_v1(&parsed, &self.kek)?.items)
+    }
+
+    pub fn search_items(&self, query: &str) -> Result<Vec<items::VaultItemV1>, VaultError> {
+        let q = query.trim().to_lowercase();
+        let mut items = self.list_items()?;
+        items.retain(|item| item_matches_query(item, &q));
+        Ok(items)
+    }
+
+    pub fn edit_item(&self, input: EditItemInput) -> Result<(), VaultError> {
+        self.update(|payload| {
+            let item = payload
+                .items
+                .iter_mut()
+                .find(|i| i.id == input.id)
+                .ok_or_else(|| VaultError::ItemNotFound(input.id.to_string()))?;
+
+            if let Some(t) = input.item_type {
+                item.item_type = t;
+            }
+            if let Some(name) = input.name {
+                item.name = name;
+            }
+            if input.clear_path {
+                item.path = None;
+            } else if let Some(path) = input.path {
+                item.path = Some(path);
+            }
+            if input.clear_tags {
+                item.tags.clear();
+            } else if let Some(tags) = input.tags {
+                item.tags = normalize_tags(tags);
+            }
+            if input.clear_username {
+                item.username = None;
+            } else if let Some(username) = input.username {
+                item.username = Some(username);
+            }
+            if let Some(secret) = input.secret {
+                item.secret = secret;
+            }
+            if input.clear_urls {
+                item.urls.clear();
+            } else if let Some(urls) = input.urls {
+                item.urls = normalize_urls(urls);
+            }
+            if input.clear_notes {
+                item.notes = None;
+            } else if let Some(notes) = input.notes {
+                item.notes = Some(notes);
+            }
+
+            item.updated_at = now_unix_seconds();
+            payload.items.sort_by(item_sort_cmp);
+            Ok(())
+        })
+    }
+
+    pub fn remove_item(&self, id: Uuid) -> Result<(), VaultError> {
+        self.update(|payload| {
+            let before = payload.items.len();
+            payload.items.retain(|i| i.id != id);
+            if payload.items.len() == before {
+                return Err(VaultError::ItemNotFound(id.to_string()));
+            }
+            Ok(())
+        })
+    }
+
+    fn update<T>(
+        &self,
+        change: impl FnOnce(&mut items::VaultPayloadV1) -> Result<T, VaultError>,
+    ) -> Result<T, VaultError> {
+        let _lock = io::VaultLock::acquire(
+            &io::lock_path_for_vault(&self.path),
+            io::LockMode::Exclusive,
+        )?;
+
+        let bytes = read_existing_vault_bytes_unlocked(&self.path)?;
+        let parsed = format_v1::parse_vault_v1(&bytes)?;
+        let mut payload = decrypt_payload_v1(&parsed, &self.kek)?;
+
+        let result = change(&mut payload)?;
+
+        let new_bytes = seal_vault_v1(
+            parsed.header.kdf_params,
+            parsed.header.kdf_salt,
+            &self.kek,
+            &payload,
+        )?;
+        io::write_vault_bytes_atomic_unlocked(&self.path, &new_bytes)?;
+        Ok(result)
+    }
 }
 
 fn read_existing_vault_bytes(vault_path: &Path) -> Result<Vec<u8>, VaultError> {
@@ -370,22 +339,14 @@ fn read_existing_vault_bytes_unlocked(vault_path: &Path) -> Result<Vec<u8>, Vaul
     }
 }
 
-fn load_payload_v1<'a>(
-    vault_bytes: &'a [u8],
-    master_password: &SecretString,
-) -> Result<(items::VaultPayloadV1, format_v1::ParsedVaultV1<'a>), VaultError> {
-    let parsed = format_v1::parse_vault_v1(vault_bytes)?;
+fn decrypt_payload_v1(
+    parsed: &format_v1::ParsedVaultV1<'_>,
+    kek: &crypto::SecretBytes,
+) -> Result<items::VaultPayloadV1, VaultError> {
     let aad = aad_for_v1(&parsed.header);
 
-    let kdf_out = crypto::derive_kdf_out_from_password(
-        master_password,
-        &parsed.header.kdf_salt,
-        parsed.header.kdf_params,
-    )?;
-    let kek = crypto::derive_kek(&kdf_out)?;
-
     let dek = crypto::unwrap_dek(
-        &kek,
+        kek,
         &parsed.header.wrap_nonce,
         &aad,
         &parsed.header.wrapped_dek,
@@ -411,20 +372,17 @@ fn load_payload_v1<'a>(
         return Err(VaultError::UnsupportedPayloadSchema(payload.schema_version));
     }
 
-    Ok((payload, parsed))
+    Ok(payload)
 }
 
 fn seal_vault_v1(
     kdf_params: crypto::KdfParams,
     kdf_salt: [u8; 16],
-    master_password: &SecretString,
+    kek: &crypto::SecretBytes,
     payload: &items::VaultPayloadV1,
 ) -> Result<Vec<u8>, VaultError> {
     let wrap_nonce = crypto::random_bytes::<{ crypto::XCHACHA_NONCE_LEN }>();
     let payload_nonce = crypto::random_bytes::<{ crypto::XCHACHA_NONCE_LEN }>();
-
-    let kdf_out = crypto::derive_kdf_out_from_password(master_password, &kdf_salt, kdf_params)?;
-    let kek = crypto::derive_kek(&kdf_out)?;
     let dek = crypto::generate_dek();
 
     let wrapped_dek_len = crypto::DEK_LEN + 16;
@@ -436,7 +394,7 @@ fn seal_vault_v1(
         payload_nonce,
     };
     let aad = format_v1::encode_header_v1(&placeholder_header);
-    let wrapped_dek = crypto::wrap_dek(&kek, &wrap_nonce, &aad, &dek)?;
+    let wrapped_dek = crypto::wrap_dek(kek, &wrap_nonce, &aad, &dek)?;
     let header = format_v1::VaultHeaderV1 {
         wrapped_dek,
         ..placeholder_header

@@ -126,7 +126,9 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 notes: args.notes,
             };
 
-            match vault::vault_add_item_v1(&path, &master_password, input) {
+            match vault::UnlockedVault::open(&path, &master_password)
+                .and_then(|v| v.add_item(input))
+            {
                 Ok(id) => {
                     let value = id.to_string();
                     let meta = json!({
@@ -164,7 +166,9 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 }
             };
 
-            match vault::vault_get_item_v1(&path, &master_password, args.id) {
+            match vault::UnlockedVault::open(&path, &master_password)
+                .and_then(|v| v.get_item(args.id))
+            {
                 Ok(item) => {
                     let reveal = args.reveal;
                     let copied = ctx.copy_requested;
@@ -246,7 +250,9 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 clear_notes: args.clear_notes,
             };
 
-            match vault::vault_edit_item_v1(&path, &master_password, input) {
+            match vault::UnlockedVault::open(&path, &master_password)
+                .and_then(|v| v.edit_item(input))
+            {
                 Ok(()) => {
                     let value = args.id.to_string();
                     let meta = json!({
@@ -289,7 +295,9 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 }
             };
 
-            match vault::vault_remove_item_v1(&path, &master_password, args.id) {
+            match vault::UnlockedVault::open(&path, &master_password)
+                .and_then(|v| v.remove_item(args.id))
+            {
                 Ok(()) => {
                     let value = args.id.to_string();
                     let meta = json!({
@@ -332,7 +340,7 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 }
             };
 
-            match vault::vault_list_items_v1(&path, &master_password) {
+            match vault::UnlockedVault::open(&path, &master_password).and_then(|v| v.list_items()) {
                 Ok(items) => {
                     let value = if ctx.output_mode.quiet {
                         items
@@ -380,7 +388,14 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 }
             };
 
-            match vault::vault_search_items_v1(&path, &master_password, &args.query) {
+            let result = if args.query.trim().is_empty() {
+                Ok(Vec::new())
+            } else {
+                vault::UnlockedVault::open(&path, &master_password)
+                    .and_then(|v| v.search_items(&args.query))
+            };
+
+            match result {
                 Ok(items) => {
                     let value = if ctx.output_mode.quiet {
                         items

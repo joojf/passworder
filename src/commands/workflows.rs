@@ -31,7 +31,9 @@ pub fn env(args: cli::EnvArgs, ctx: &AppContext) -> ExitCode {
         }
     };
 
-    let items = match vault::vault_list_items_v1(&vault_path, &master_password) {
+    let items = match vault::UnlockedVault::open(&vault_path, &master_password)
+        .and_then(|v| v.list_items())
+    {
         Ok(items) => items,
         Err(error) => {
             eprintln!("Error: {error}");
@@ -88,7 +90,9 @@ pub fn run(args: cli::RunArgs, ctx: &AppContext) -> ExitCode {
         }
     };
 
-    let items = match vault::vault_list_items_v1(&vault_path, &master_password) {
+    let items = match vault::UnlockedVault::open(&vault_path, &master_password)
+        .and_then(|v| v.list_items())
+    {
         Ok(items) => items,
         Err(error) => {
             eprintln!("Error: {error}");
@@ -167,7 +171,9 @@ pub fn inject(args: cli::InjectArgs, ctx: &AppContext) -> ExitCode {
         }
     };
 
-    let items = match vault::vault_list_items_v1(&vault_path, &master_password) {
+    let items = match vault::UnlockedVault::open(&vault_path, &master_password)
+        .and_then(|v| v.list_items())
+    {
         Ok(items) => items,
         Err(error) => {
             eprintln!("Error: {error}");
