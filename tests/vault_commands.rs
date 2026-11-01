@@ -277,14 +277,15 @@ fn vault_edit_rejects_clearing_and_setting_the_same_field() {
     let id = "00000000-0000-0000-0000-000000000000";
 
     for flags in [
-        ["--clear-path", "--item-path"],
-        ["--clear-tags", "--tag"],
-        ["--clear-username", "--username"],
-        ["--clear-urls", "--url"],
-        ["--clear-notes", "--notes"],
+        &["--clear-path", "--item-path", "value"][..],
+        &["--clear-tags", "--tag", "value"],
+        &["--clear-username", "--username", "value"],
+        &["--clear-urls", "--url", "value"],
+        &["--clear-notes", "--new-notes"],
     ] {
         let edit = common::passworder(home.path())
-            .args(["vault", "edit", id, flags[0], flags[1], "value"])
+            .args(["vault", "edit", id])
+            .args(flags)
             .output()
             .expect("vault edit output");
 
@@ -322,25 +323,24 @@ fn vault_edit_keeps_sets_and_clears_optional_fields() {
             "work",
             "--username",
             "octocat",
-            "--notes",
-            "old",
+            "--with-notes",
             "--tag",
             "dev",
             "--url",
             "https://github.com",
         ])
-        .write_stdin("pw\ns3cr3t\n")
+        .write_stdin("pw\ns3cr3t\nold\n")
         .output()
         .expect("vault add output");
     assert!(add.status.success());
     let json: Value = serde_json::from_slice(&add.stdout).expect("valid json");
     let id = json["meta"]["id"].as_str().expect("meta.id string");
 
-    let edit = |flags: &[&str]| -> Value {
+    let edit = |stdin: &str, flags: &[&str]| -> Value {
         let edited = common::passworder(home.path())
             .args(["vault", "edit", id])
             .args(flags)
-            .write_stdin("pw\n")
+            .write_stdin(stdin.to_string())
             .output()
             .expect("vault edit output");
         assert!(edited.status.success());
@@ -355,20 +355,23 @@ fn vault_edit_keeps_sets_and_clears_optional_fields() {
         json["meta"]["item"].clone()
     };
 
-    let item = edit(&["--notes", "new"]);
+    let item = edit("pw\nnew\n", &["--new-notes"]);
     assert_eq!(item["notes"], "new");
     assert_eq!(item["path"], "work");
     assert_eq!(item["username"], "octocat");
     assert_eq!(item["tags"][0], "dev");
     assert_eq!(item["urls"][0], "https://github.com");
 
-    let item = edit(&[
-        "--clear-path",
-        "--clear-tags",
-        "--clear-username",
-        "--clear-urls",
-        "--clear-notes",
-    ]);
+    let item = edit(
+        "pw\n",
+        &[
+            "--clear-path",
+            "--clear-tags",
+            "--clear-username",
+            "--clear-urls",
+            "--clear-notes",
+        ],
+    );
     for field in ["path", "username", "notes"] {
         assert!(item[field].is_null(), "{field} cleared");
     }
@@ -380,22 +383,25 @@ fn vault_edit_keeps_sets_and_clears_optional_fields() {
         );
     }
 
-    let item = edit(&[
-        "--item-path",
-        "home",
-        "--username",
-        "hubot",
-        "--tag",
-        "ops",
-        "--url",
-        "https://example.com",
-    ]);
+    let item = edit(
+        "pw\n",
+        &[
+            "--item-path",
+            "home",
+            "--username",
+            "hubot",
+            "--tag",
+            "ops",
+            "--url",
+            "https://example.com",
+        ],
+    );
     assert_eq!(item["path"], "home");
     assert_eq!(item["username"], "hubot");
     assert_eq!(item["tags"][0], "ops");
     assert_eq!(item["urls"][0], "https://example.com");
 
-    let item = edit(&["--tag", " ", "--url", " "]);
+    let item = edit("pw\n", &["--tag", " ", "--url", " "]);
     for field in ["tags", "urls"] {
         assert_eq!(
             item[field].as_array().map(Vec::len),
@@ -430,6 +436,36 @@ fn vault_get_hides_notes_unless_revealed() {
 
     assert!(get(&["--reveal"]).contains("notes:\tprivate-note"));
     let json: Value = serde_json::from_str(&get(&["--reveal", "--json"])).expect("valid json");
+    assert_eq!(json["meta"]["item"]["notes"], "private-note");
+    assert_eq!(json["meta"]["item"]["secret"], "s3cr3t");
+}
+
+#[test]
+fn vault_edit_new_notes_keeps_old_notes_when_the_prompt_fails() {
+    let home = tempfile::tempdir().expect("temp home");
+    let id = init_with_login(home.path());
+
+    let edit = |stdin: &str| {
+        common::passworder(home.path())
+            .args(["vault", "edit", id.as_str(), "--new-notes"])
+            .write_stdin(stdin.to_string())
+            .output()
+            .expect("vault edit output")
+    };
+
+    let wrong = edit("wrong\nnew-note\n");
+    assert_eq!(wrong.status.code(), Some(64));
+    assert!(!String::from_utf8_lossy(&wrong.stderr).contains("New notes:"));
+
+    let empty = edit("pw\n\n");
+    assert_eq!(empty.status.code(), Some(64));
+
+    let get = common::passworder(home.path())
+        .args(["vault", "get", id.as_str(), "--json", "--reveal"])
+        .write_stdin("pw\n")
+        .output()
+        .expect("vault get output");
+    let json: Value = serde_json::from_slice(&get.stdout).expect("valid json");
     assert_eq!(json["meta"]["item"]["notes"], "private-note");
 }
 
@@ -482,10 +518,9 @@ fn init_with_login(home: &std::path::Path) -> String {
             "login",
             "--name",
             "github",
-            "--notes",
-            "private-note",
+            "--with-notes",
         ])
-        .write_stdin("pw\ns3cr3t\n")
+        .write_stdin("pw\ns3cr3t\nprivate-note\n")
         .output()
         .expect("vault add output");
     assert!(add.status.success());

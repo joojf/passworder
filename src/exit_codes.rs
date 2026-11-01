@@ -60,7 +60,7 @@ pub fn exit_code_for_vault_prompt_error(error: &vault::PromptError) -> ExitCode 
     use vault::PromptError::*;
 
     match error {
-        Io(_) => ExitCode::from(EXIT_IO),
+        Io(_) | EchoControl(_) => ExitCode::from(EXIT_IO),
         Empty | Mismatch => ExitCode::from(EXIT_USAGE),
     }
 }
