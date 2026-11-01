@@ -1,4 +1,4 @@
-use crate::vault::{crypto, format_v1, io, items, prompt};
+use crate::vault::{crypto, format_v1, io, items};
 use secrecy::SecretString;
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
@@ -40,9 +40,6 @@ pub enum VaultError {
 
     #[error(transparent)]
     Format(#[from] format_v1::VaultFormatError),
-
-    #[error(transparent)]
-    Prompt(#[from] prompt::PromptError),
 
     #[error(transparent)]
     Json(#[from] serde_json::Error),
