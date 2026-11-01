@@ -45,7 +45,7 @@ Examples:
 cargo run -- password --json
 # => {"value":"s3cr3t...","meta":{"kind":"password","profile":null,"config":{...}}}
 
-cargo run -- entropy --input "abc" --json
+echo -n "abc" | cargo run -- entropy --json
 # => {"value":"{\"length\":3,...}","meta":{"kind":"entropy","report":{"length":3,"shannon_bits_estimate":...}}}
 ```
 
@@ -122,11 +122,7 @@ Profiles let teams codify password policies:
 echo -n "Tr0ub4dor&3" | cargo run -- entropy
 ```
 
-Outputs a JSON report with the input length and a Shannon entropy estimate in bits. You can also pass data directly without STDIN:
-
-```bash
-cargo run -- entropy --input "correcthorsebatterystaple"
-```
+Outputs a JSON report with the input length and a Shannon entropy estimate in bits.
 
 Build with `--features strength` to augment the entropy output with [zxcvbn](https://github.com/dropbox/zxcvbn) strength data. When the feature is enabled you will see `guesses_log10`, `score`, and friendly `crack_times_display` strings in the JSON response, matching the library's estimator fields.[^zxcvbn]
 

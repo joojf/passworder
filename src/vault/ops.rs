@@ -93,7 +93,8 @@ pub fn vault_init_v1(vault_path: &Path, master_password: &SecretString) -> Resul
         return Err(VaultError::AlreadyExists(vault_path.display().to_string()));
     }
 
-    let kdf_params = if std::env::var_os(TEST_KDF_ENV).is_some() {
+    // Debug builds only, because this weakens key derivation.
+    let kdf_params = if cfg!(debug_assertions) && std::env::var_os(TEST_KDF_ENV).is_some() {
         crypto::KdfParams::for_tests()
     } else {
         crypto::KdfParams::recommended_macos()

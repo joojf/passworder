@@ -7,10 +7,6 @@ pub fn env(args: cli::EnvArgs, ctx: &AppContext) -> ExitCode {
         eprintln!("Error: `env` does not support `--json`, `--quiet`, or `--copy`.");
         return ExitCode::from(exit_codes::EXIT_USAGE);
     }
-    if !args.unsafe_mode {
-        eprintln!("Error: `env` prints secrets; re-run with `--unsafe` to proceed.");
-        return ExitCode::from(exit_codes::EXIT_USAGE);
-    }
     if std::env::var_os("CI").is_some() {
         eprintln!("Warning: CI detected; secret output may be logged.");
     }
@@ -67,10 +63,6 @@ pub fn env(args: cli::EnvArgs, ctx: &AppContext) -> ExitCode {
 pub fn run(args: cli::RunArgs, ctx: &AppContext) -> ExitCode {
     if ctx.output_mode.json || ctx.output_mode.quiet || ctx.copy_requested {
         eprintln!("Error: `run` does not support `--json`, `--quiet`, or `--copy`.");
-        return ExitCode::from(exit_codes::EXIT_USAGE);
-    }
-    if std::env::var_os("CI").is_some() && !args.unsafe_mode {
-        eprintln!("Error: refusing to run in CI without `--unsafe` (env may be logged).");
         return ExitCode::from(exit_codes::EXIT_USAGE);
     }
 
@@ -137,10 +129,6 @@ pub fn run(args: cli::RunArgs, ctx: &AppContext) -> ExitCode {
 pub fn inject(args: cli::InjectArgs, ctx: &AppContext) -> ExitCode {
     if ctx.output_mode.json || ctx.output_mode.quiet || ctx.copy_requested {
         eprintln!("Error: `inject` does not support `--json`, `--quiet`, or `--copy`.");
-        return ExitCode::from(exit_codes::EXIT_USAGE);
-    }
-    if !args.unsafe_mode {
-        eprintln!("Error: `inject` writes secrets to disk; re-run with `--unsafe` to proceed.");
         return ExitCode::from(exit_codes::EXIT_USAGE);
     }
     if std::env::var_os("CI").is_some() {
