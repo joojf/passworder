@@ -218,8 +218,8 @@ pub struct VaultAddArgs {
     #[arg(long = "url", value_name = "URL", action = clap::ArgAction::Append, help = "Associated URL (repeatable).")]
     pub urls: Vec<String>,
 
-    #[arg(long, value_name = "NOTES", help = "Optional notes.")]
-    pub notes: Option<String>,
+    #[arg(long, help = "Prompt for notes.")]
+    pub with_notes: bool,
 }
 
 #[derive(Debug, Args)]
@@ -274,9 +274,9 @@ pub struct VaultEditArgs {
     #[arg(long, conflicts_with = "urls", help = "Clear URLs.")]
     pub clear_urls: bool,
 
-    #[arg(long, value_name = "NOTES", help = "Update notes.")]
-    pub notes: Option<String>,
-    #[arg(long, conflicts_with = "notes", help = "Clear notes.")]
+    #[arg(long, help = "Prompt for new notes.")]
+    pub new_notes: bool,
+    #[arg(long, conflicts_with = "new_notes", help = "Clear notes.")]
     pub clear_notes: bool,
 }
 

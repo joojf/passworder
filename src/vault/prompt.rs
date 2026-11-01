@@ -13,6 +13,9 @@ pub enum PromptError {
 
     #[error("passwords do not match")]
     Mismatch,
+
+    #[error("cannot disable terminal echo, so refusing to read sensitive input: {0}")]
+    EchoControl(io::Error),
 }
 
 pub fn prompt_new_master_password() -> Result<SecretString, PromptError> {
@@ -50,7 +53,9 @@ fn read_secret_line(prompt: &str) -> Result<String, PromptError> {
     if io::stdin().is_terminal() {
         #[cfg(unix)]
         {
-            return read_line_no_echo_unix();
+            let result = read_line_no_echo_unix();
+            eprintln!();
+            return result;
         }
     }
 
@@ -74,21 +79,18 @@ fn read_line_no_echo_unix() -> Result<String, PromptError> {
     unsafe {
         let mut original = MaybeUninit::<libc::termios>::uninit();
         if libc::tcgetattr(fd, original.as_mut_ptr()) != 0 {
-            return read_line_plain();
+            return Err(PromptError::EchoControl(io::Error::last_os_error()));
         }
         let original = original.assume_init();
 
         let mut modified = original;
         modified.c_lflag &= !(libc::ECHO | libc::ECHONL);
-        let _guard = TermiosGuard {
-            fd,
-            original,
-            active: libc::tcsetattr(fd, libc::TCSANOW, &modified) == 0,
-        };
+        if libc::tcsetattr(fd, libc::TCSANOW, &modified) != 0 {
+            return Err(PromptError::EchoControl(io::Error::last_os_error()));
+        }
+        let _guard = TermiosGuard { fd, original };
 
-        let line = read_line_plain()?;
-        eprintln!();
-        Ok(line)
+        read_line_plain()
     }
 }
 
@@ -96,16 +98,13 @@ fn read_line_no_echo_unix() -> Result<String, PromptError> {
 struct TermiosGuard {
     fd: i32,
     original: libc::termios,
-    active: bool,
 }
 
 #[cfg(unix)]
 impl Drop for TermiosGuard {
     fn drop(&mut self) {
-        if self.active {
-            unsafe {
-                let _ = libc::tcsetattr(self.fd, libc::TCSANOW, &self.original);
-            }
+        unsafe {
+            let _ = libc::tcsetattr(self.fd, libc::TCSANOW, &self.original);
         }
     }
 }

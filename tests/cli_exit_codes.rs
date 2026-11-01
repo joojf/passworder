@@ -142,6 +142,10 @@ fn flags_that_expose_or_skip_protecting_secrets_are_rejected() {
             "vault", "add", "--type", "login", "--name", "x", "--secret", "v",
         ][..],
         &["vault", "edit", id, "--secret", "v"],
+        &[
+            "vault", "add", "--type", "login", "--name", "x", "--notes", "v",
+        ],
+        &["vault", "edit", id, "--notes", "v"],
         &["entropy", "--input", "v"],
         &["env", "--profile", "dev", "--format", "bash", "--unsafe"],
         &["run", "--profile", "dev", "--unsafe", "--", "true"],

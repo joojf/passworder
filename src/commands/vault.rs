@@ -121,6 +121,18 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 }
             };
 
+            let notes = match args
+                .with_notes
+                .then(|| vault::prompt_secret("Notes: "))
+                .transpose()
+            {
+                Ok(notes) => notes,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_codes::exit_code_for_vault_prompt_error(&error);
+                }
+            };
+
             let input = vault::AddItemInput {
                 item_type: args.item_type,
                 name: args.name,
@@ -129,7 +141,7 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 username: args.username,
                 secret,
                 urls: args.urls,
-                notes: args.notes,
+                notes: notes.map(|n| n.expose_secret().to_owned()),
             };
 
             match unlocked.add_item(input) {
@@ -244,16 +256,28 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 }
             };
 
-            let secret = if args.new_secret {
-                match vault::prompt_secret("New secret: ") {
-                    Ok(secret) => Some(secret),
-                    Err(error) => {
-                        eprintln!("Error: {error}");
-                        return exit_codes::exit_code_for_vault_prompt_error(&error);
-                    }
+            let secret = match args
+                .new_secret
+                .then(|| vault::prompt_secret("New secret: "))
+                .transpose()
+            {
+                Ok(secret) => secret,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_codes::exit_code_for_vault_prompt_error(&error);
                 }
-            } else {
-                None
+            };
+
+            let notes = match args
+                .new_notes
+                .then(|| vault::prompt_secret("New notes: "))
+                .transpose()
+            {
+                Ok(notes) => notes,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_codes::exit_code_for_vault_prompt_error(&error);
+                }
             };
 
             let input = vault::EditItemInput {
@@ -290,7 +314,9 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 notes: if args.clear_notes {
                     vault::Change::Clear
                 } else {
-                    args.notes.map_or(vault::Change::Keep, vault::Change::Set)
+                    notes
+                        .map(|n| n.expose_secret().to_owned())
+                        .map_or(vault::Change::Keep, vault::Change::Set)
                 },
             };
 
