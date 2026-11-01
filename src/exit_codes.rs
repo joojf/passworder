@@ -70,7 +70,7 @@ pub fn exit_code_for_vault_error(error: &vault::VaultError) -> ExitCode {
 
     match error {
         VaultDirUnavailable | Io(_) => ExitCode::from(EXIT_IO),
-        AlreadyExists(_) | NotInitialized | AuthFailed | ItemNotFound(_) | Prompt(_) => {
+        AlreadyExists(_) | NotInitialized | AuthFailed | ItemNotFound(_) => {
             ExitCode::from(EXIT_USAGE)
         }
         UnsupportedPayloadSchema(_) | Crypto(_) | Format(_) | Json(_) => {

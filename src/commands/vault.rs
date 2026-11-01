@@ -97,6 +97,14 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 }
             };
 
+            let hidden_input = match vault::hide_input() {
+                Ok(hidden) => hidden,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_codes::exit_code_for_vault_prompt_error(&error);
+                }
+            };
+
             let master_password = match vault::prompt_master_password() {
                 Ok(pw) => pw,
                 Err(error) => {
@@ -143,6 +151,8 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 urls: args.urls,
                 notes: notes.map(|n| n.expose_secret().to_owned()),
             };
+
+            drop(hidden_input);
 
             match unlocked.add_item(input) {
                 Ok(id) => {
@@ -240,6 +250,14 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                 }
             };
 
+            let hidden_input = match vault::hide_input() {
+                Ok(hidden) => hidden,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    return exit_codes::exit_code_for_vault_prompt_error(&error);
+                }
+            };
+
             let master_password = match vault::prompt_master_password() {
                 Ok(pw) => pw,
                 Err(error) => {
@@ -319,6 +337,8 @@ pub fn run(args: cli::VaultArgs, ctx: &AppContext) -> ExitCode {
                         .map_or(vault::Change::Keep, vault::Change::Set)
                 },
             };
+
+            drop(hidden_input);
 
             match unlocked.edit_item(input) {
                 Ok(()) => {
