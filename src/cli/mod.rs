@@ -71,6 +71,25 @@ pub enum Commands {
     Run(RunArgs),
     #[command(about = "Inject secrets into a template file.")]
     Inject(InjectArgs),
+    #[cfg(unix)]
+    #[command(about = "Run the daemon that holds the unlocked vault in memory.")]
+    Daemon(DaemonArgs),
+    #[cfg(unix)]
+    #[command(about = "Unlock the vault in the daemon (prompts for master password).")]
+    Unlock,
+    #[cfg(unix)]
+    #[command(about = "Lock the vault in the daemon, wiping its key from memory.")]
+    Lock,
+    #[cfg(unix)]
+    #[command(about = "Show whether the daemon has the vault locked or unlocked.")]
+    Status,
+}
+
+#[cfg(unix)]
+#[derive(Debug, Args)]
+pub struct DaemonArgs {
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
 }
 
 #[derive(Debug, Args)]
