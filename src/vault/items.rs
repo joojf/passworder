@@ -1,6 +1,9 @@
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize, Serializer};
+use std::path::PathBuf;
 use uuid::Uuid;
+
+pub const PAYLOAD_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
@@ -33,18 +36,34 @@ pub struct VaultItemV1 {
     pub updated_at: u64,
 }
 
+/// Lets `program` receive the secret of item `item_id` in the environment variable `env`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Grant {
+    #[serde(with = "uuid_as_string")]
+    pub id: Uuid,
+    #[serde(with = "uuid_as_string")]
+    pub item_id: Uuid,
+    /// Canonical absolute path, so a different file with the same name doesn't match.
+    pub program: PathBuf,
+    pub env: String,
+    pub created_at: u64,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
-pub struct VaultPayloadV1 {
+pub struct VaultPayloadV2 {
     pub schema_version: u32,
     #[serde(default)]
     pub items: Vec<VaultItemV1>,
+    #[serde(default)]
+    pub grants: Vec<Grant>,
 }
 
-impl Default for VaultPayloadV1 {
+impl Default for VaultPayloadV2 {
     fn default() -> Self {
         Self {
-            schema_version: 1,
+            schema_version: PAYLOAD_SCHEMA_VERSION,
             items: Vec::new(),
+            grants: Vec::new(),
         }
     }
 }

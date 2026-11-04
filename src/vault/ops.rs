@@ -1,4 +1,4 @@
-use crate::vault::{crypto, format_v1, io, items};
+use crate::vault::{crypto, format_v1, grants, io, items};
 use secrecy::SecretString;
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
@@ -31,6 +31,9 @@ pub enum VaultError {
 
     #[error("item not found: {0}")]
     ItemNotFound(String),
+
+    #[error(transparent)]
+    Grant(#[from] grants::GrantError),
 
     #[error(transparent)]
     Io(#[from] io::VaultIoError),
@@ -123,10 +126,7 @@ pub fn vault_init_v1(vault_path: &Path, master_password: &SecretString) -> Resul
     };
     let header_bytes = format_v1::encode_header_v1(&header);
 
-    let payload_plaintext = serde_json::to_vec(&serde_json::json!({
-        "schema_version": 1,
-        "items": [],
-    }))?;
+    let payload_plaintext = serde_json::to_vec(&items::VaultPayloadV2::default())?;
     let payload_ciphertext =
         crypto::encrypt_payload(&dek, &payload_nonce, &aad, &payload_plaintext)?;
 
@@ -233,9 +233,7 @@ impl UnlockedVault {
     }
 
     pub fn list_items(&self) -> Result<Vec<items::VaultItemV1>, VaultError> {
-        let bytes = read_existing_vault_bytes(&self.path)?;
-        let parsed = format_v1::parse_vault_v1(&bytes)?;
-        Ok(decrypt_payload_v1(&parsed, &self.kek)?.items)
+        Ok(self.read_payload()?.items)
     }
 
     pub fn search_items(&self, query: &str) -> Result<Vec<items::VaultItemV1>, VaultError> {
@@ -285,13 +283,86 @@ impl UnlockedVault {
             if payload.items.len() == before {
                 return Err(VaultError::ItemNotFound(id.to_string()));
             }
+            payload.grants.retain(|g| g.item_id != id);
             Ok(())
         })
     }
 
+    pub fn add_grant(
+        &self,
+        item_id: Uuid,
+        program: &str,
+        env: &str,
+    ) -> Result<items::Grant, VaultError> {
+        grants::validate_env_name(env)?;
+        let program = grants::resolve_program(program)?;
+
+        self.update(|payload| {
+            if !payload.items.iter().any(|i| i.id == item_id) {
+                return Err(VaultError::ItemNotFound(item_id.to_string()));
+            }
+            if payload
+                .grants
+                .iter()
+                .any(|g| g.program == program && g.env == env)
+            {
+                return Err(grants::GrantError::Duplicate {
+                    program,
+                    env: env.to_string(),
+                }
+                .into());
+            }
+
+            let grant = items::Grant {
+                id: Uuid::new_v4(),
+                item_id,
+                program,
+                env: env.to_string(),
+                created_at: now_unix_seconds(),
+            };
+            payload.grants.push(grant.clone());
+            Ok(grant)
+        })
+    }
+
+    /// Returns each grant with the name of its item.
+    pub fn list_grants(&self) -> Result<Vec<(items::Grant, String)>, VaultError> {
+        let payload = self.read_payload()?;
+        Ok(payload
+            .grants
+            .into_iter()
+            .map(|grant| {
+                let item_name = payload
+                    .items
+                    .iter()
+                    .find(|i| i.id == grant.item_id)
+                    .map(|i| i.name.clone())
+                    .unwrap_or_default();
+                (grant, item_name)
+            })
+            .collect())
+    }
+
+    pub fn remove_grant(&self, id: Uuid) -> Result<(), VaultError> {
+        self.update(|payload| {
+            let before = payload.grants.len();
+            payload.grants.retain(|g| g.id != id);
+            if payload.grants.len() == before {
+                return Err(grants::GrantError::NotFound(id.to_string()).into());
+            }
+            Ok(())
+        })
+    }
+
+    fn read_payload(&self) -> Result<items::VaultPayloadV2, VaultError> {
+        let bytes = read_existing_vault_bytes(&self.path)?;
+        let parsed = format_v1::parse_vault_v1(&bytes)?;
+        decrypt_payload_v1(&parsed, &self.kek)
+    }
+
     fn update<T>(
         &self,
-        change: impl FnOnce(&mut items::VaultPayloadV1) -> Result<T, VaultError>,
+        change: impl FnOnce(&mut items::VaultPayloadV2) -> Result<T, VaultError>,
     ) -> Result<T, VaultError> {
         let _lock = io::VaultLock::acquire(
             &io::lock_path_for_vault(&self.path),
@@ -338,7 +409,7 @@ fn read_existing_vault_bytes_unlocked(vault_path: &Path) -> Result<Vec<u8>, Vaul
 fn decrypt_payload_v1(
     parsed: &format_v1::ParsedVaultV1<'_>,
     kek: &crypto::SecretBytes,
-) -> Result<items::VaultPayloadV1, VaultError> {
+) -> Result<items::VaultPayloadV2, VaultError> {
     let aad = aad_for_v1(&parsed.header);
 
     let dek = crypto::unwrap_dek(
@@ -363,8 +434,8 @@ fn decrypt_payload_v1(
         other => VaultError::Crypto(other),
     })?;
 
-    let payload: items::VaultPayloadV1 = serde_json::from_slice(&plaintext)?;
-    if payload.schema_version != 1 {
+    let payload: items::VaultPayloadV2 = serde_json::from_slice(&plaintext)?;
+    if payload.schema_version != items::PAYLOAD_SCHEMA_VERSION {
         return Err(VaultError::UnsupportedPayloadSchema(payload.schema_version));
     }
 
@@ -375,7 +446,7 @@ fn seal_vault_v1(
     kdf_params: crypto::KdfParams,
     kdf_salt: [u8; 16],
     kek: &crypto::SecretBytes,
-    payload: &items::VaultPayloadV1,
+    payload: &items::VaultPayloadV2,
 ) -> Result<Vec<u8>, VaultError> {
     let wrap_nonce = crypto::random_bytes::<{ crypto::XCHACHA_NONCE_LEN }>();
     let payload_nonce = crypto::random_bytes::<{ crypto::XCHACHA_NONCE_LEN }>();
@@ -496,4 +567,33 @@ fn item_matches_query(item: &items::VaultItemV1, q: &str) -> bool {
         return true;
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vault_with_an_older_payload_schema_is_refused() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("vault.pwder");
+        let password = SecretString::from("pw");
+        let params = crypto::KdfParams::for_tests();
+        let salt = crypto::random_bytes::<16>();
+        let kdf_out = crypto::derive_kdf_out_from_password(&password, &salt, params).unwrap();
+        let kek = crypto::derive_kek(&kdf_out).unwrap();
+        let payload = items::VaultPayloadV2 {
+            schema_version: 1,
+            ..Default::default()
+        };
+        let bytes = seal_vault_v1(params, salt, &kek, &payload).unwrap();
+        io::write_vault_bytes_atomic(&path, &bytes).unwrap();
+
+        let result = UnlockedVault::open(&path, &password);
+
+        assert!(matches!(
+            result,
+            Err(VaultError::UnsupportedPayloadSchema(1))
+        ));
+    }
 }

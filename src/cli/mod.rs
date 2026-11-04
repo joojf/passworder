@@ -65,6 +65,11 @@ pub enum Commands {
     Profile(ProfileArgs),
     #[command(subcommand_required = true, about = "Manage a local encrypted vault.")]
     Vault(VaultArgs),
+    #[command(
+        subcommand_required = true,
+        about = "Choose which programs may receive which secrets."
+    )]
+    Grant(GrantArgs),
     #[command(about = "Emit environment variables from the vault.")]
     Env(EnvArgs),
     #[command(about = "Run a command with environment injected from the vault.")]
@@ -118,6 +123,64 @@ pub enum VaultCommands {
     List(VaultListArgs),
     #[command(about = "Search items in the vault (no persistent index).")]
     Search(VaultSearchArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct GrantArgs {
+    #[command(subcommand)]
+    pub command: GrantCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GrantCommands {
+    #[command(about = "Let a program receive an item's secret in an environment variable.")]
+    Add(GrantAddArgs),
+    #[command(about = "List grants.")]
+    List(GrantListArgs),
+    #[command(about = "Remove a grant by id.")]
+    Rm(GrantRmArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct GrantAddArgs {
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
+
+    #[arg(
+        long,
+        value_name = "ID",
+        help = "Item id (UUID) whose secret the program receives."
+    )]
+    pub item: Uuid,
+
+    #[arg(
+        long,
+        value_name = "PROGRAM",
+        help = "Program name, looked up in PATH, or path. Symlinks are resolved."
+    )]
+    pub program: String,
+
+    #[arg(
+        long,
+        value_name = "NAME",
+        help = "Environment variable that holds the secret."
+    )]
+    pub env: String,
+}
+
+#[derive(Debug, Args)]
+pub struct GrantListArgs {
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
+}
+
+#[derive(Debug, Args)]
+pub struct GrantRmArgs {
+    #[command(flatten)]
+    pub path: VaultPathOverrideArgs,
+
+    #[arg(value_name = "ID", help = "Grant id (UUID).")]
+    pub id: Uuid,
 }
 
 #[derive(Debug, Args, Clone, Default)]
