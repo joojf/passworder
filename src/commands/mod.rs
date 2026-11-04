@@ -1,6 +1,7 @@
 #[cfg(unix)]
 mod daemon;
 mod entropy;
+mod grant;
 mod passphrase;
 mod password;
 mod profile;
@@ -23,6 +24,7 @@ pub fn dispatch(command: cli::Commands, ctx: &AppContext) -> ExitCode {
         cli::Commands::Run(args) => workflows::run(args, ctx),
         cli::Commands::Inject(args) => workflows::inject(args, ctx),
         cli::Commands::Vault(args) => vault::run(args, ctx),
+        cli::Commands::Grant(args) => grant::run(args, ctx),
         #[cfg(unix)]
         cli::Commands::Daemon(args) => daemon::serve(args, ctx),
         #[cfg(unix)]
